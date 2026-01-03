@@ -117,7 +117,7 @@ import asyncio
 import random
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-CHANNEL_ID = "@your_channel_username"  # ← ЗАМЕНИ на свой канал!
+CHANNEL_ID = "@content_ai_helper_bot"  # ← ЗАМЕНИ на свой канал!
 
 async def auto_post():
     """Авто-пост каждые 6 часов"""
@@ -142,7 +142,7 @@ import random
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # НАСТРОЙ СВОЙ КАНАЛ!
-CHANNEL_ID = "@your_channel_here"  # ← ← ← ЗАМЕНИ!!!
+CHANNEL_ID = "@content_ai_helper_bot"  # ← ← ← ЗАМЕНИ!!!
 
 async def auto_post():
     topics = ['фитнес', 'SMM', 'мотивация']
