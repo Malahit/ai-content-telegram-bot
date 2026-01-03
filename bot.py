@@ -65,7 +65,7 @@ async def generate_content(message: Message, state: FSMContext):
         
         # Perplexity запрос
         response = openai.ChatCompletion.create(
-            model="llama-3.1-sonar-small-128k-online",
+            model="sonar",
             messages=[
                 {"role": "system", "content": "Создай SMM пост 200-300 слов. Эмодзи, структура, призыв к действию."},
                 {"role": "user", "content": f"Тема: {topic}\nRAG: {knowledge}"}
