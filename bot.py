@@ -136,3 +136,29 @@ async def on_startup():
     scheduler.add_job(auto_post, 'interval', hours=6)
     scheduler.start()
     print("🚀 Автопостинг запущен: каждые 6 часов")
+
+import asyncio
+import random
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+# НАСТРОЙ СВОЙ КАНАЛ!
+CHANNEL_ID = "@your_channel_here"  # ← ← ← ЗАМЕНИ!!!
+
+async def auto_post():
+    topics = ['фитнес', 'SMM', 'мотивация']
+    topic = random.choice(topics)
+    try:
+        post = await generate_post(topic)
+        await bot.send_message(CHANNEL_ID, post)
+        print(f"✅ Автопост: {topic}")
+    except Exception as e:
+        print(f"❌ Ошибка автопоста: {e}")
+
+# В dp.startup() добавить:
+# await on_startup()
+
+async def on_startup():
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(auto_post, 'interval', hours=6)
+    scheduler.start()
+    print("🚀 Автопостинг: каждые 6ч")
