@@ -1,0 +1,40 @@
+# Byte-compiled Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv/
+env/
+ENV/
+render.yaml
+
+# RAG Vectorstore (тяжёлая БД)
+vectorstore/
+
+# Secrets & Keys
+knowledge/*.pdf
+knowledge/*.key
+knowledge/*.txt  # кроме test_fitness.txt
+"📂 телеграмм токен*.txt"
+"src/bot*.py"
+*.token
+*.pem
+!.gitignore
+
+# IDE / Editors
+.cursorignore
+.cursorindexingignore
+.vscode/
+.idea/
+*.swp
+
+# Marimo
+marimo/_static/
+marimo/_lsp/
+__marimo__/
+
+# PyPI / Deployment
+.pypirc
+node_modules/
