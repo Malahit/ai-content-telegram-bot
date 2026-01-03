@@ -88,5 +88,9 @@ async def main():
     print("🤖 Bot starting...")
     await dp.start_polling(bot)
 
+async def main():
+    """Запуск бота"""
+    await dp.start_polling(bot)  # ← ТВОЯ строка из кода!
+
 if __name__ == "__main__":
     asyncio.run(main())

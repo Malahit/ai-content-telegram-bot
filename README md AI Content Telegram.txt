@@ -4,8 +4,8 @@
 Статус: ✅ ОНАЙН (render.com + Perplexity Sonar Pro)
 ✅ СДЕЛАНО (3 Января 2026)
 Шаг	Задача	Статус	Дата
-A1	Telegram BOT_TOKEN	✅ 8125450571:AAFuC1v6k6xVqXw3z8w0jK0L0K5wZ0z0z0z	03.01
-B1	GitHub SSH ключ	✅ ssh-ed25519 AAAAC3NzaC1lZDI1NTE5...	03.01
+A1	Telegram BOT_TOKEN	✅ 	03.01
+B1	GitHub SSH ключ	✅ 	03.01
 B2	git push origin main	✅ Everything up-to-date	03.01
 C1	Perplexity PPLX_API_KEY	✅ pplx-... (у тебя есть)	03.01
 D1	Render.com Dashboard	✅ ai-content-telegram-bot.onrender.com	03.01
