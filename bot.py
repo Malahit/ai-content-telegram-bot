@@ -66,6 +66,13 @@ async def generate_content(message: Message):
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)[:100]}")
 
+async def main():
+    """Запуск бота"""
+    await dp.start_polling(bot)  # ← ТВОЯ строка из кода!
+
 if __name__ == "__main__":
     asyncio.run(main())
 
+
+
+    
