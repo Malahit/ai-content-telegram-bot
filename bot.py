@@ -14,7 +14,22 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+
+            translated = translator.translate(text, target_lang=target)
+
+            return translated, target
+
+        return text, detected
+
+    except:
+
+        return text, 'ru'
+
 translator = GoogleTranslator(source='auto', target='ru')
+async def detect_lang_and_translate(text, user_lang='ru'):
+    """🌐 RU/EN перевод"""
+    try:
+        detected
 
 # 🔥 RAG
 try:
@@ -140,15 +155,4 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 
-async def detect_lang_and_translate(text, user_lang='ru'):
-    """🌐 RU/EN перевод"""
-    try:
-        detected = detect(text)
-        target = 'ru' if detected == 'en' else 'en'
-        if target != user_lang:
-            translated = translator.translate(text, target_lang=target)
-            return translated, target
-        return text, detected
-    except:
-        return text, 'ru'
 
