@@ -3,7 +3,7 @@ import os
 import random
 from dotenv import load_dotenv
 from langdetect import detect
-from googletrans import Translator
+from deep_translator import GoogleTranslator
 
 from openai import OpenAI
 from aiogram import Bot, Dispatcher, types, F
@@ -14,7 +14,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-translator = Translator()
+translator = GoogleTranslator(source='auto', target='ru')
 
 # 🔥 RAG
 try:
@@ -146,7 +146,7 @@ async def detect_lang_and_translate(text, user_lang='ru'):
         detected = detect(text)
         target = 'ru' if detected == 'en' else 'en'
         if target != user_lang:
-            translated = translator.translate(text, dest=target).text
+            translated = translator.translate(text, target_lang=target)
             return translated, target
         return text, detected
     except:
