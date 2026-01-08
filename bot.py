@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import random
+import re
 import requests
 from dotenv import load_dotenv
 from typing import Optional
@@ -63,6 +64,32 @@ kb = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
+def sanitize_content(content: str) -> str:
+    """
+    🧹 Clean up generated content by removing links and metadata artifacts.
+    Removes patterns like [text], (numbers), URLs, and citation markers.
+    """
+    # Remove markdown links [text](url) and [text]
+    content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', content)  # Keep text from [text](url)
+    content = re.sub(r'\[([^\]]+)\]', '', content)  # Remove standalone [text]
+    
+    # Remove citation numbers and patterns like (1), (123), [1], etc.
+    content = re.sub(r'\(\d+\)', '', content)
+    content = re.sub(r'\[\d+\]', '', content)
+    
+    # Remove standalone URLs
+    content = re.sub(r'https?://\S+', '', content)
+    
+    # Clean up multiple spaces that might result from removals (but preserve newlines)
+    lines = content.split('\n')
+    lines = [re.sub(r'\s+', ' ', line).strip() for line in lines]
+    content = '\n'.join(lines)
+    
+    # Clean up excessive empty lines
+    content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+    
+    return content.strip()
+
 async def detect_lang_and_translate(text: str) -> tuple[str, str]:
     """🌐 RU/EN авто перевод"""
     if not TRANSLATE_ENABLED:
@@ -113,12 +140,23 @@ async def generate_content(topic: str, max_tokens: int = 800) -> str:
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"].strip()
         
+        # 🧹 Sanitize content to remove links and citation artifacts
+        content = sanitize_content(content)
+        logger.info(f"🧹 Content sanitized, length: {len(content)} chars")
+        
         # 🌐 Перевод
         if TRANSLATE_ENABLED:
             translated, lang = await detect_lang_and_translate(content)
             content = f"{translated}\n\n🌐 [{lang.upper()}]"
         
-        return f"{content}{rag_info}"
+        # 📚 Add RAG info only if available (intentional metadata)
+        if rag_info:
+            content = f"{content}{rag_info}"
+        
+        # 🔍 Log final sanitized content for debugging
+        logger.info(f"✅ Final content preview: {content[:100]}...")
+        
+        return content
     except Exception as e:
         logger.error(f"API Error: {e}")
         return f"❌ API недоступен: {str(e)[:100]}"
