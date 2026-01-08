@@ -6,10 +6,11 @@ This script tests the database operations and user management features.
 import asyncio
 import os
 import sys
+import tempfile
 from database import Database
 
-# Use test database
-TEST_DB_PATH = "/tmp/test_bot_users.db"
+# Use test database in temp directory
+TEST_DB_PATH = os.path.join(tempfile.gettempdir(), "test_bot_users.db")
 
 
 async def test_database_init():
