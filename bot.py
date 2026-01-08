@@ -5,7 +5,6 @@ import random
 import requests
 from dotenv import load_dotenv
 from typing import Optional
-from functools import wraps
 
 # Database
 from database import db
@@ -47,8 +46,15 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PPLX_API_KEY = os.getenv("PPLX_API_KEY", "PERPLEXITY_API_KEY")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@content_ai_helper_bot")  # Из .env!
-ADMIN_IDS = os.getenv("ADMIN_IDS", "").split(",")  # Comma-separated admin IDs
-ADMIN_IDS = [int(aid.strip()) for aid in ADMIN_IDS if aid.strip().isdigit()]
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS", "")
+# Parse admin IDs with error handling
+ADMIN_IDS = []
+for aid in ADMIN_IDS_STR.split(","):
+    aid = aid.strip()
+    if aid.isdigit():
+        ADMIN_IDS.append(int(aid))
+    elif aid:
+        logger.warning(f"Invalid admin ID in ADMIN_IDS: {aid}")
 
 if not BOT_TOKEN:
     raise RuntimeError("❌ BOT_TOKEN не найден в .env!")

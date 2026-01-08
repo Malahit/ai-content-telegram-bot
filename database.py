@@ -4,7 +4,7 @@ Uses SQLite with aiosqlite for async operations.
 """
 import aiosqlite
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict
 import os
 
@@ -49,7 +49,7 @@ class Database:
                     # Update existing user
                     await db.execute(
                         "UPDATE users SET name = ?, updated_at = ? WHERE id = ?",
-                        (name, datetime.now(), user_id)
+                        (name, datetime.now(timezone.utc), user_id)
                     )
                     logger.info(f"Updated user: {user_id} ({name})")
                 else:
@@ -113,7 +113,7 @@ class Database:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
                     "UPDATE users SET role = ?, updated_at = ? WHERE id = ?",
-                    (role, datetime.now(), user_id)
+                    (role, datetime.now(timezone.utc), user_id)
                 )
                 await db.commit()
                 logger.info(f"Updated user {user_id} role to {role}")
@@ -132,7 +132,7 @@ class Database:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
                     "UPDATE users SET status = ?, updated_at = ? WHERE id = ?",
-                    (status, datetime.now(), user_id)
+                    (status, datetime.now(timezone.utc), user_id)
                 )
                 await db.commit()
                 logger.info(f"Updated user {user_id} status to {status}")
