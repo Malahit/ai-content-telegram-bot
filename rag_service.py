@@ -5,7 +5,7 @@ This module handles RAG functionality with proper error handling
 and fallback mechanisms when RAG is not available.
 """
 
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from logger_config import logger
 from config import config
 
@@ -14,9 +14,9 @@ from config import config
 try:
     from rag import create_vectorstore
     RAG_ENABLED = True
-except ImportError as e:
+except ImportError:
     RAG_ENABLED = False
-    logger.warning(f"RAG module not available: {e}")
+    logger.warning("RAG module not available - dependencies not installed")
     create_vectorstore = None
 
 
@@ -52,7 +52,7 @@ class RAGService:
         """
         return self.enabled and self.vectorstore is not None
     
-    def get_context(self, query: str, k: Optional[int] = None) -> tuple[str, str]:
+    def get_context(self, query: str, k: Optional[int] = None) -> Tuple[str, str]:
         """
         Get RAG context for a query.
         

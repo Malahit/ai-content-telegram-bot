@@ -14,9 +14,9 @@ try:
     from langdetect import detect, LangDetectException
     from deep_translator import GoogleTranslator
     TRANSLATE_ENABLED = True
-except ImportError as e:
+except ImportError:
     TRANSLATE_ENABLED = False
-    logger.warning(f"Translation libraries not available: {e}")
+    logger.warning("Translation libraries not available - install langdetect and deep-translator to enable")
 
 
 class TranslationService:
