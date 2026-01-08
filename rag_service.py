@@ -61,7 +61,7 @@ class RAGService:
             k: Number of documents to retrieve (default from config)
             
         Returns:
-            tuple[str, str]: RAG context and info string
+            Tuple[str, str]: RAG context and info string
         """
         if not self.is_enabled():
             logger.debug("RAG disabled, returning empty context")
