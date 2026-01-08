@@ -14,6 +14,10 @@ render.yaml
 # RAG Vectorstore (тяжёлая БД)
 vectorstore/
 
+# User database
+*.db
+*.db-journal
+
 # Secrets & Keys
 knowledge/*.pdf
 knowledge/*.key

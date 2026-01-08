@@ -5,6 +5,7 @@ apscheduler==3.10.4
 langdetect==1.0.9
 deep-translator==1.11.4
 openai==1.109.1  # Для Perplexity compatibility
+aiosqlite==0.20.0  # Database for user management
 
 # RAG
 langchain==0.3.2
