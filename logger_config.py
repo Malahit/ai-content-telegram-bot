@@ -19,9 +19,9 @@ class SensitiveDataFilter(logging.Filter):
     
     # Patterns to detect and redact sensitive data
     PATTERNS = [
-        (re.compile(r'(token["\s:=]+)([A-Za-z0-9_.\-]+)', re.IGNORECASE), r'\1***REDACTED***'),
-        (re.compile(r'(api[_\s]?key["\s:=]+)([A-Za-z0-9_.\-]+)', re.IGNORECASE), r'\1***REDACTED***'),
-        (re.compile(r'(bearer\s+)([A-Za-z0-9_.\-]+)', re.IGNORECASE), r'\1***REDACTED***'),
+        (re.compile(r'(token["\s:=]+)([A-Za-z0-9_.-]+)', re.IGNORECASE), r'\1***REDACTED***'),
+        (re.compile(r'(api[_\s]?key["\s:=]+)([A-Za-z0-9_.-]+)', re.IGNORECASE), r'\1***REDACTED***'),
+        (re.compile(r'(bearer\s+)([A-Za-z0-9_.-]+)', re.IGNORECASE), r'\1***REDACTED***'),
         (re.compile(r'(password["\s:=]+)([^\s"]+)', re.IGNORECASE), r'\1***REDACTED***'),
     ]
     
