@@ -27,9 +27,9 @@ class Config:
     def _load_config(self) -> None:
         """Load all configuration from environment variables."""
         # Bot Configuration
-        self.bot_token: Optional[str] = os.getenv("BOT_TOKEN")
+        self.bot_token: Optional[str] = os.getenv("BOT_TOKEN") or None
         # Try PPLX_API_KEY first, then fall back to PERPLEXITY_API_KEY
-        self.pplx_api_key: Optional[str] = os.getenv("PPLX_API_KEY") or os.getenv("PERPLEXITY_API_KEY")
+        self.pplx_api_key: Optional[str] = os.getenv("PPLX_API_KEY") or os.getenv("PERPLEXITY_API_KEY") or None
         self.channel_id: str = os.getenv("CHANNEL_ID", "@content_ai_helper_bot")
         
         # API Configuration

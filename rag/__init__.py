@@ -4,7 +4,16 @@ RAG (Retrieval-Augmented Generation) package.
 This package provides document retrieval and vectorstore functionality.
 """
 
-from .rag import RAGKnowledgeBase
+import logging
+
+logger = logging.getLogger(__name__)
+
+try:
+    from .rag import RAGKnowledgeBase
+    _RAG_AVAILABLE = True
+except ImportError:
+    _RAG_AVAILABLE = False
+    logger.debug("RAG module dependencies not available")
 
 
 def create_vectorstore(vectorstore_path="rag/vectorstore"):
@@ -17,6 +26,9 @@ def create_vectorstore(vectorstore_path="rag/vectorstore"):
     Returns:
         FAISS vectorstore instance or None if not available
     """
+    if not _RAG_AVAILABLE:
+        return None
+    
     try:
         rag_kb = RAGKnowledgeBase(vectorstore_path=vectorstore_path)
         
@@ -24,14 +36,15 @@ def create_vectorstore(vectorstore_path="rag/vectorstore"):
         try:
             rag_kb.load_vectorstore()
             return rag_kb.vectorstore
-        except Exception:
-            # If loading fails, return None (will be handled by RAG service)
+        except (FileNotFoundError, RuntimeError) as e:
+            # Vectorstore doesn't exist or is corrupted
+            logger.debug(f"Vectorstore not available: {e}")
             return None
             
     except Exception as e:
-        # Return None if RAG initialization fails
+        # Unexpected error during RAG initialization
+        logger.warning(f"RAG initialization failed: {e}")
         return None
 
 
-__all__ = ["RAGKnowledgeBase", "create_vectorstore"]
-
+__all__ = ["RAGKnowledgeBase", "create_vectorstore"] if _RAG_AVAILABLE else ["create_vectorstore"]
