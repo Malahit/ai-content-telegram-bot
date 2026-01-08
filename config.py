@@ -77,5 +77,19 @@ class Config:
         }
 
 
-# Global configuration instance
-config = Config()
+def get_config() -> Config:
+    """
+    Get or create the global configuration instance.
+    
+    Returns:
+        Config: The global configuration instance
+    """
+    global _config_instance
+    if _config_instance is None:
+        _config_instance = Config()
+    return _config_instance
+
+
+# Global configuration instance (lazy-loaded)
+_config_instance: Optional[Config] = None
+config = get_config()
