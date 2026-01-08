@@ -12,7 +12,7 @@ def sanitize_content(content: str) -> str:
     Removes patterns like [text], (numbers), URLs, and citation markers.
     """
     # Remove markdown links [text](url) and [text]
-    content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', content)  # Keep text from [text](url)
+    content = re.sub(r'\[([^\]]+)\]\([^\)]*\)', r'\1', content)  # Keep text from [text](url)
     content = re.sub(r'\[([^\]]+)\]', '', content)  # Remove standalone [text]
     
     # Remove citation numbers and patterns like (1), (123), [1], etc.
