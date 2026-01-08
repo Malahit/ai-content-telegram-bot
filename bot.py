@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import random
+import re
 import requests
 from dotenv import load_dotenv
 from typing import Optional
@@ -63,6 +64,16 @@ kb = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
+def clean_text(content: str) -> str:
+    """🧹 Sanitize generated content by removing artifacts"""
+    # Remove links starting with http or www
+    content = re.sub(r"https?://\S+|www\.\S+", "", content)
+    # Remove numbers in brackets or parentheses (e.g., [123] or (123))
+    content = re.sub(r"\[\d+\]|\(\d+\)", "", content)
+    # Remove extra spaces and trim
+    content = re.sub(r"\s+", " ", content).strip()
+    return content
+
 async def detect_lang_and_translate(text: str) -> tuple[str, str]:
     """🌐 RU/EN авто перевод"""
     if not TRANSLATE_ENABLED:
@@ -112,6 +123,9 @@ async def generate_content(topic: str, max_tokens: int = 800) -> str:
         print(f"📡 API: {resp.status_code}")
         resp.raise_for_status()
         content = resp.json()["choices"][0]["message"]["content"].strip()
+        
+        # 🧹 Clean the content
+        content = clean_text(content)
         
         # 🌐 Перевод
         if TRANSLATE_ENABLED:
