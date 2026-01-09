@@ -6,6 +6,10 @@ langdetect==1.0.9
 deep-translator==1.11.4
 openai==1.109.1  # Для Perplexity compatibility
 
+# Database
+sqlalchemy==2.0.23
+aiosqlite==0.19.0
+
 # RAG
 langchain==0.3.2
 langchain-community==0.3.1
@@ -13,7 +17,3 @@ langchain-openai==0.2.2
 faiss-cpu==1.9.0.post1
 pypdf==5.1.0
 unstructured==0.18.24
-apscheduler==3.10.4
-langdetect==1.0.9
-deep-translator==1.11.4
-openai==1.109.1
