@@ -9,6 +9,26 @@ from database import db
 logger = logging.getLogger(__name__)
 
 
+def sanitize_for_log(text: str) -> str:
+    """
+    Sanitize user input for logging to prevent log injection.
+    
+    Args:
+        text: Input text to sanitize
+        
+    Returns:
+        Sanitized text safe for logging
+    """
+    if not text:
+        return ""
+    # Replace newlines and carriage returns with spaces
+    sanitized = text.replace('\n', ' ').replace('\r', ' ')
+    # Limit length to prevent log flooding
+    if len(sanitized) > 200:
+        sanitized = sanitized[:200] + "..."
+    return sanitized
+
+
 class UserManager:
     """Manages user operations with integrated logging"""
     
@@ -24,16 +44,21 @@ class UserManager:
         Returns:
             True if successful, False otherwise
         """
+        # Sanitize name for logging
+        safe_name = sanitize_for_log(name)
+        
         # Add user to database
         user = await db.add_user(user_id, name, role)
         
         if user:
-            # Log the registration
-            await db.add_log(
-                user_id=user_id,
-                action=f"User registered: name='{name}', role='{role}'"
-            )
-            logger.info(f"✅ User {user_id} ({name}) registered with role '{role}'")
+            # Log the registration (only if user was newly created, not existing)
+            existing_logs = await db.get_user_logs(user_id, limit=1)
+            if not existing_logs or "User registered" not in (existing_logs[0].action if existing_logs else ""):
+                await db.add_log(
+                    user_id=user_id,
+                    action=f"User registered: name='{safe_name}', role='{role}'"
+                )
+            logger.info(f"✅ User {user_id} ({safe_name}) registered with role '{role}'")
             return True
         
         logger.warning(f"⚠️ Failed to register user {user_id}")

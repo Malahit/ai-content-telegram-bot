@@ -192,8 +192,9 @@ async def generate_post(message: types.Message):
     content = await generate_content(topic)
     await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
     
-    # Log the action
-    await db.add_log(user_id, f"Generated post: '{topic[:50]}'")
+    # Log the action with sanitized topic
+    safe_topic = topic.replace('\n', ' ').replace('\r', ' ')[:50]
+    await db.add_log(user_id, f"Generated post: '{safe_topic}'")
 
 # Admin commands for user management
 @dp.message(Command("admin"))

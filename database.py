@@ -22,7 +22,7 @@ class User(Base):
     """User model for storing Telegram user data"""
     __tablename__ = 'users'
     
-    id = Column(Integer, primary_key=True, unique=True, nullable=False)  # Telegram user ID
+    id = Column(Integer, primary_key=True, nullable=False)  # Telegram user ID
     name = Column(Text, nullable=False)  # User's display name
     role = Column(Text, nullable=False, default='user')  # admin, user, guest
     status = Column(Text, nullable=False, default='active')  # active, banned
@@ -121,7 +121,7 @@ class Database:
                 existing_user = result.scalar_one_or_none()
                 
                 if existing_user:
-                    logger.info(f"User {user_id} already exists")
+                    logger.info(f"User {user_id} already exists, skipping registration")
                     return existing_user
                 
                 # Create new user
