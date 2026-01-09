@@ -4,6 +4,11 @@ __pycache__/
 *.рус
 *$py.class
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
 # Environments
 .env
 .venv/
