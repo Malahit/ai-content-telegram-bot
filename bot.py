@@ -5,6 +5,7 @@ import random
 import requests
 from dotenv import load_dotenv
 from typing import Optional
+from functools import wraps
 
 # 🌐 Опционально: перевод (если нужно)
 try:
@@ -35,6 +36,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+# User management database
+import database
 
 # Логирование
 logging.basicConfig(level=logging.INFO)
@@ -132,9 +136,203 @@ async def start_handler(message: types.Message):
         f"💬 <i>Тема поста → готовый текст 200-300 слов!</i>\n\n"
         f"📡 Автопостинг: <code>{CHANNEL_ID}</code> (каждые 6ч)\n"
         f"⚙️ max_tokens=800 | sonar-small-online\n\n"
-        f"<b>Примеры:</b> SMM Москва | фитнес | завтрак",
+        f"<b>Примеры:</b> SMM Москва | фитнес | завтрак\n\n"
+        f"<b>Команды управления:</b>\n"
+        f"/register - Регистрация пользователя\n"
+        f"/set_role - Установить роль (только админ)\n"
+        f"/list_users - Список пользователей (только админ)",
         reply_markup=kb
     )
+
+
+# ==================== USER MANAGEMENT COMMANDS ====================
+
+def admin_only(func):
+    """Decorator to restrict commands to admin users only."""
+    @wraps(func)
+    async def wrapper(message: types.Message, *args, **kwargs):
+        if not database.is_user_admin(message.from_user.id):
+            await message.answer("❌ <b>Access Denied</b>\n\nThis command is only available to administrators.")
+            return
+        return await func(message, *args, **kwargs)
+    return wrapper
+
+
+@dp.message(Command("register"))
+async def register_handler(message: types.Message):
+    """Handle user registration."""
+    user_id = message.from_user.id
+    username = message.from_user.username
+    
+    # Get full name from command or use Telegram name
+    args = message.text.split(maxsplit=1)
+    if len(args) > 1:
+        full_name = args[1].strip()
+    else:
+        full_name = message.from_user.full_name or "Unknown User"
+    
+    # Validate full name
+    if not full_name or len(full_name) < 2:
+        await message.answer(
+            "❌ <b>Invalid Name</b>\n\n"
+            "Usage: <code>/register Your Full Name</code>\n"
+            "Example: <code>/register John Smith</code>"
+        )
+        return
+    
+    if len(full_name) > 100:
+        await message.answer("❌ Name is too long. Maximum 100 characters allowed.")
+        return
+    
+    # Register user
+    success = database.register_user(user_id, username, full_name)
+    
+    if success:
+        await message.answer(
+            f"✅ <b>Registration Successful!</b>\n\n"
+            f"👤 Name: <b>{full_name}</b>\n"
+            f"🆔 ID: <code>{user_id}</code>\n"
+            f"👔 Role: <b>user</b>\n\n"
+            f"You can now use all bot features!"
+        )
+        logger.info(f"New user registered: {user_id} - {full_name}")
+    else:
+        user = database.get_user(user_id)
+        if user:
+            await message.answer(
+                f"⚠️ <b>Already Registered</b>\n\n"
+                f"👤 Name: <b>{user['full_name']}</b>\n"
+                f"👔 Role: <b>{user['role']}</b>\n"
+                f"📅 Registered: {user['registered_at'][:10]}"
+            )
+        else:
+            await message.answer("❌ Registration failed. Please try again later.")
+
+
+@dp.message(Command("set_role"))
+@admin_only
+async def set_role_handler(message: types.Message):
+    """Handle role assignment (admin only)."""
+    args = message.text.split()
+    
+    # Validate command format
+    if len(args) != 3:
+        await message.answer(
+            "❌ <b>Invalid Format</b>\n\n"
+            "Usage: <code>/set_role USER_ID ROLE</code>\n\n"
+            "Available roles: admin, user, guest\n"
+            "Example: <code>/set_role 123456789 admin</code>"
+        )
+        return
+    
+    try:
+        target_user_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ Invalid user ID. Must be a number.")
+        return
+    
+    new_role = args[2].lower()
+    
+    # Set role
+    success, msg = database.set_user_role(target_user_id, new_role, message.from_user.id)
+    await message.answer(msg)
+
+
+@dp.message(Command("list_users"))
+@admin_only
+async def list_users_handler(message: types.Message):
+    """Handle user listing with pagination (admin only)."""
+    # Parse page number from command
+    args = message.text.split()
+    page = 1
+    
+    if len(args) > 1:
+        try:
+            page = int(args[1])
+            if page < 1:
+                page = 1
+        except ValueError:
+            await message.answer("❌ Invalid page number.")
+            return
+    
+    # Get users
+    users, total_users, total_pages = database.list_users(page=page, per_page=10)
+    
+    if not users:
+        await message.answer("📋 <b>No users found</b>")
+        return
+    
+    # Format user list
+    response = f"👥 <b>Users List</b> (Page {page}/{total_pages})\n"
+    response += f"📊 Total: {total_users} users\n\n"
+    
+    for user in users:
+        status_icon = "🚫" if user['is_banned'] else "✅"
+        role_icon = {"admin": "👑", "user": "👤", "guest": "👁"}.get(user['role'], "❓")
+        username_str = f"@{user['username']}" if user['username'] else "—"
+        
+        response += (
+            f"{status_icon} {role_icon} <b>{user['full_name']}</b>\n"
+            f"   ID: <code>{user['user_id']}</code> | {username_str}\n"
+            f"   Role: <i>{user['role']}</i> | Registered: {user['registered_at'][:10]}\n\n"
+        )
+    
+    # Add pagination info
+    if total_pages > 1:
+        response += f"\n💡 Use <code>/list_users {page + 1}</code> for next page"
+    
+    await message.answer(response)
+
+
+@dp.message(Command("ban"))
+@admin_only
+async def ban_handler(message: types.Message):
+    """Handle user ban (admin only)."""
+    args = message.text.split()
+    
+    if len(args) != 2:
+        await message.answer(
+            "❌ <b>Invalid Format</b>\n\n"
+            "Usage: <code>/ban USER_ID</code>\n"
+            "Example: <code>/ban 123456789</code>"
+        )
+        return
+    
+    try:
+        target_user_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ Invalid user ID. Must be a number.")
+        return
+    
+    success, msg = database.ban_user(target_user_id, message.from_user.id)
+    await message.answer(msg)
+
+
+@dp.message(Command("unban"))
+@admin_only
+async def unban_handler(message: types.Message):
+    """Handle user unban (admin only)."""
+    args = message.text.split()
+    
+    if len(args) != 2:
+        await message.answer(
+            "❌ <b>Invalid Format</b>\n\n"
+            "Usage: <code>/unban USER_ID</code>\n"
+            "Example: <code>/unban 123456789</code>"
+        )
+        return
+    
+    try:
+        target_user_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ Invalid user ID. Must be a number.")
+        return
+    
+    success, msg = database.unban_user(target_user_id, message.from_user.id)
+    await message.answer(msg)
+
+
+# ==================== END USER MANAGEMENT COMMANDS ====================
 
 @dp.message(F.text.in_({"📝 Пост", "❓ Помощь", "ℹ️ Статус"}))
 async def menu_handler(message: types.Message):
@@ -180,6 +378,11 @@ async def auto_post():
         logger.error(f"❌ Автопост failed: {e}")
 
 async def on_startup():
+    # Initialize database
+    database.init_database()
+    logger.info("✅ Database initialized")
+    
+    # Start scheduler
     scheduler = AsyncIOScheduler()
     scheduler.add_job(auto_post, 'interval', hours=6)
     scheduler.start()
