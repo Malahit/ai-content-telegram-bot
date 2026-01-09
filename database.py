@@ -5,7 +5,7 @@ Handles user registration, roles, and banning functionality.
 
 import sqlite3
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
@@ -69,7 +69,7 @@ def register_user(user_id: int, username: Optional[str], full_name: str) -> bool
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             
             # Check if user already exists
             cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
@@ -142,7 +142,7 @@ def set_user_role(user_id: int, new_role: str, admin_id: int) -> tuple[bool, str
                 return False, "❌ Cannot change admin role for security reasons"
             
             # Update role
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             cursor.execute("""
                 UPDATE users 
                 SET role = ?, updated_at = ?
@@ -185,7 +185,7 @@ def ban_user(user_id: int, admin_id: int) -> tuple[bool, str]:
                 return False, "⚠️ User is already banned"
             
             # Ban user
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             cursor.execute("""
                 UPDATE users 
                 SET is_banned = 1, updated_at = ?
@@ -225,7 +225,7 @@ def unban_user(user_id: int, admin_id: int) -> tuple[bool, str]:
                 return False, "⚠️ User is not banned"
             
             # Unban user
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
             cursor.execute("""
                 UPDATE users 
                 SET is_banned = 0, updated_at = ?
