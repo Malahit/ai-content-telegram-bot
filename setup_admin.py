@@ -21,6 +21,18 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import database
 
+def set_admin_role_directly(user_id: int):
+    """Directly set admin role bypassing normal role restrictions."""
+    from datetime import datetime, timezone
+    with database.get_db_connection() as conn:
+        cursor = conn.cursor()
+        now = datetime.now(timezone.utc).isoformat()
+        cursor.execute("""
+            UPDATE users 
+            SET role = 'admin', updated_at = ?
+            WHERE user_id = ?
+        """, (now, user_id))
+
 def setup_admin():
     """Create the first admin user."""
     
@@ -71,16 +83,7 @@ def setup_admin():
         
         # Upgrade to admin
         print("\n3. Upgrading user to admin...")
-        # Temporarily bypass the admin check by directly updating
-        from datetime import datetime, timezone
-        with database.get_db_connection() as conn:
-            cursor = conn.cursor()
-            now = datetime.now(timezone.utc).isoformat()
-            cursor.execute("""
-                UPDATE users 
-                SET role = 'admin', updated_at = ?
-                WHERE user_id = ?
-            """, (now, user_id))
+        set_admin_role_directly(user_id)
         print("   ✅ User upgraded to admin")
     else:
         # Register new admin user
@@ -92,16 +95,7 @@ def setup_admin():
         print("   ✅ User registered")
         
         print("\n3. Setting admin role...")
-        # Directly set admin role
-        from datetime import datetime, timezone
-        with database.get_db_connection() as conn:
-            cursor = conn.cursor()
-            now = datetime.now(timezone.utc).isoformat()
-            cursor.execute("""
-                UPDATE users 
-                SET role = 'admin', updated_at = ?
-                WHERE user_id = ?
-            """, (now, user_id))
+        set_admin_role_directly(user_id)
         print("   ✅ Admin role set")
     
     # Verify
