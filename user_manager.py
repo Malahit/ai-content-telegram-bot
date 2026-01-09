@@ -47,18 +47,23 @@ class UserManager:
         # Sanitize name for logging
         safe_name = sanitize_for_log(name)
         
-        # Add user to database
+        # Check if user already exists before adding
+        existing_user = await db.get_user(user_id)
+        user_already_exists = existing_user is not None
+        
+        # Add user to database (or get existing)
         user = await db.add_user(user_id, name, role)
         
         if user:
-            # Log the registration (only if user was newly created, not existing)
-            existing_logs = await db.get_user_logs(user_id, limit=1)
-            if not existing_logs or "User registered" not in (existing_logs[0].action if existing_logs else ""):
+            # Log the registration only if this is a new user
+            if not user_already_exists:
                 await db.add_log(
                     user_id=user_id,
                     action=f"User registered: name='{safe_name}', role='{role}'"
                 )
-            logger.info(f"✅ User {user_id} ({safe_name}) registered with role '{role}'")
+                logger.info(f"✅ User {user_id} ({safe_name}) registered with role '{role}'")
+            else:
+                logger.info(f"✅ User {user_id} ({safe_name}) already exists")
             return True
         
         logger.warning(f"⚠️ Failed to register user {user_id}")

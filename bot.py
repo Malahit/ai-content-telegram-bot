@@ -8,7 +8,7 @@ from typing import Optional
 
 # Database and user management
 from database import db
-from user_manager import user_manager
+from user_manager import user_manager, sanitize_for_log
 
 # 🌐 Опционально: перевод (если нужно)
 try:
@@ -193,7 +193,7 @@ async def generate_post(message: types.Message):
     await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
     
     # Log the action with sanitized topic
-    safe_topic = topic.replace('\n', ' ').replace('\r', ' ')[:50]
+    safe_topic = sanitize_for_log(topic)
     await db.add_log(user_id, f"Generated post: '{safe_topic}'")
 
 # Admin commands for user management

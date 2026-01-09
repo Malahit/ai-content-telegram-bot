@@ -101,7 +101,7 @@ class Database:
     
     async def add_user(self, user_id: int, name: str, role: str = 'user', status: str = 'active') -> Optional[User]:
         """
-        Add a new user to the database.
+        Add a new user to the database or return existing user.
         
         Args:
             user_id: Telegram user ID
@@ -110,7 +110,7 @@ class Database:
             status: User status (active, banned)
             
         Returns:
-            User object if successful, None otherwise
+            User object if successful (new or existing), None on error
         """
         try:
             async with self.get_session() as session:
