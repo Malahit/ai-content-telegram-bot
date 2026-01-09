@@ -13,9 +13,13 @@ logger = logging.getLogger(__name__)
 class ImageFetcher:
     """Fetches images from Unsplash API"""
     
-    def __init__(self, api_key: Optional[str] = None):
+    # Configuration constants
+    DEFAULT_TIMEOUT = 10  # seconds
+    
+    def __init__(self, api_key: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT):
         self.api_key = api_key or os.getenv("UNSPLASH_API_KEY")
         self.base_url = "https://api.unsplash.com"
+        self.timeout = timeout
         self.session = requests.Session()
         if self.api_key:
             self.session.headers.update({
@@ -47,7 +51,7 @@ class ImageFetcher:
                 "orientation": "landscape"
             }
             
-            response = self.session.get(endpoint, params=params, timeout=10)
+            response = self.session.get(endpoint, params=params, timeout=self.timeout)
             response.raise_for_status()
             
             data = response.json()
@@ -92,7 +96,7 @@ class ImageFetcher:
                 "orientation": "landscape"
             }
             
-            response = self.session.get(endpoint, params=params, timeout=10)
+            response = self.session.get(endpoint, params=params, timeout=self.timeout)
             response.raise_for_status()
             
             photos = response.json()

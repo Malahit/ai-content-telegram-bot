@@ -125,7 +125,13 @@ class BotStatistics:
         else:
             report += "  Пока нет данных\n"
         
-        report += f"\n📅 Последнее обновление: {self.stats['last_updated'][:19]}"
+        # Format datetime properly
+        try:
+            last_update = datetime.fromisoformat(self.stats['last_updated']).strftime('%Y-%m-%d %H:%M:%S')
+        except (ValueError, KeyError):
+            last_update = self.stats.get('last_updated', 'N/A')[:19]
+        
+        report += f"\n📅 Последнее обновление: {last_update}"
         
         return report
 
