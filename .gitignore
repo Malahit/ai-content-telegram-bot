@@ -14,6 +14,9 @@ render.yaml
 # RAG Vectorstore (тяжёлая БД)
 vectorstore/
 
+# Statistics data
+bot_statistics.json
+
 # Secrets & Keys
 knowledge/*.pdf
 knowledge/*.key

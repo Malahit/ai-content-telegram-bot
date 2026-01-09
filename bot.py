@@ -5,6 +5,8 @@ import random
 import requests
 from dotenv import load_dotenv
 from typing import Optional
+from statistics import stats_tracker
+from image_fetcher import image_fetcher
 
 # 🌐 Опционально: перевод (если нужно)
 try:
@@ -30,8 +32,10 @@ except ImportError:
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart, Command
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -44,6 +48,9 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PPLX_API_KEY = os.getenv("PPLX_API_KEY", "PERPLEXITY_API_KEY")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@content_ai_helper_bot")  # Из .env!
+UNSPLASH_API_KEY = os.getenv("UNSPLASH_API_KEY")  # API key for Unsplash
+ADMIN_USER_IDS = os.getenv("ADMIN_USER_IDS", "").split(",")  # Comma-separated admin IDs
+ADMIN_USER_IDS = [int(uid.strip()) for uid in ADMIN_USER_IDS if uid.strip().isdigit()]
 
 if not BOT_TOKEN:
     raise RuntimeError("❌ BOT_TOKEN не найден в .env!")
@@ -52,16 +59,40 @@ if not PPLX_API_KEY:
 
 print(f"🚀 BOT_TOKEN: ✅ | PPLX_API_KEY: ✅ | CHANNEL_ID: {CHANNEL_ID}")
 print(f"✅ RAG: {'ON' if RAG_ENABLED else 'OFF'} | 🌐 Translate: {'ON' if TRANSLATE_ENABLED else 'OFF'}")
+print(f"🖼️ Unsplash: {'ON' if UNSPLASH_API_KEY else 'OFF'} | 👥 Admins: {len(ADMIN_USER_IDS)}")
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
+# FSM States for post generation
+class PostGeneration(StatesGroup):
+    waiting_for_topic = State()
+    post_type = State()  # "text" or "images"
+
+# Main keyboard for all users
 kb = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ Статус")]
+        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="🖼️ Пост с фото")],
+        [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ Статус")]
     ],
     resize_keyboard=True,
 )
+
+# Admin keyboard with statistics button
+kb_admin = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="🖼️ Пост с фото")],
+        [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ Статус")],
+        [KeyboardButton(text="📊 Статистика")]
+    ],
+    resize_keyboard=True,
+)
+
+def get_keyboard(user_id: int) -> ReplyKeyboardMarkup:
+    """Get appropriate keyboard based on user role"""
+    if user_id in ADMIN_USER_IDS:
+        return kb_admin
+    return kb
 
 async def detect_lang_and_translate(text: str) -> tuple[str, str]:
     """🌐 RU/EN авто перевод"""
@@ -127,45 +158,109 @@ async def generate_content(topic: str, max_tokens: int = 800) -> str:
 async def start_handler(message: types.Message):
     rag_status = "✅ RAG" if RAG_ENABLED else "⚠️ Без RAG"
     translate_status = "🌐 RU/EN" if TRANSLATE_ENABLED else ""
+    images_status = "🖼️ Images" if UNSPLASH_API_KEY else ""
+    user_keyboard = get_keyboard(message.from_user.id)
+    
     await message.answer(
-        f"<b>🚀 AI Content Bot v2.1 PROD {rag_status} {translate_status}</b>\n\n"
+        f"<b>🚀 AI Content Bot v2.2 PROD {rag_status} {translate_status} {images_status}</b>\n\n"
         f"💬 <i>Тема поста → готовый текст 200-300 слов!</i>\n\n"
+        f"📝 <b>Пост</b> - только текст\n"
+        f"🖼️ <b>Пост с фото</b> - текст + до 3 изображений\n\n"
         f"📡 Автопостинг: <code>{CHANNEL_ID}</code> (каждые 6ч)\n"
         f"⚙️ max_tokens=800 | sonar-small-online\n\n"
         f"<b>Примеры:</b> SMM Москва | фитнес | завтрак",
-        reply_markup=kb
+        reply_markup=user_keyboard
     )
 
-@dp.message(F.text.in_({"📝 Пост", "❓ Помощь", "ℹ️ Статус"}))
-async def menu_handler(message: types.Message):
+@dp.message(F.text.in_({"📝 Пост", "🖼️ Пост с фото", "❓ Помощь", "ℹ️ Статус", "📊 Статистика"}))
+async def menu_handler(message: types.Message, state: FSMContext):
     rag_status = "с RAG" if RAG_ENABLED else "обычный"
     if message.text == "❓ Помощь":
+        await state.clear()  # Clear any active state
         await message.answer(
             f"🎯 <b>Как использовать:</b>\n"
-            f"• Пиши тему поста\n"
-            f"• Получи 250 слов {rag_status} + эмодзи\n"
+            f"• 📝 <b>Пост</b> - только текст\n"
+            f"• 🖼️ <b>Пост с фото</b> - текст + 3 изображения\n"
+            f"• Пиши тему, получи готовый контент!\n"
             f"• 🌐 Авто RU/EN перевод\n\n"
             f"<b>Команды:</b> /start\n"
             f"<code>Техподдержка: @твой_nick</code>"
         )
     elif message.text == "ℹ️ Статус":
+        await state.clear()  # Clear any active state
         await message.answer(
             f"✅ Bot: Online\n"
             f"✅ Perplexity: sonar-small-online\n"
             f"📚 RAG: {'ON' if RAG_ENABLED else 'OFF'}\n"
             f"🌐 Translate: {'ON' if TRANSLATE_ENABLED else 'OFF'}\n"
+            f"🖼️ Images: {'ON' if UNSPLASH_API_KEY else 'OFF'}\n"
             f"⏰ Автопост: каждые 6ч → {CHANNEL_ID}"
         )
+    elif message.text == "📊 Статистика":
+        await state.clear()  # Clear any active state
+        # Admin-only feature
+        if message.from_user.id not in ADMIN_USER_IDS:
+            await message.answer("❌ <b>Доступ запрещён!</b> Эта функция только для администраторов.")
+            return
+        
+        report = stats_tracker.get_report()
+        await message.answer(report)
     else:
+        # Handle "📝 Пост" or "🖼️ Пост с фото"
+        post_type = "images" if message.text == "🖼️ Пост с фото" else "text"
+        await state.update_data(post_type=post_type)
+        await state.set_state(PostGeneration.waiting_for_topic)
         await message.answer(f"✍️ <b>Напиши тему поста</b> ({rag_status})!")
 
-@dp.message(F.text, ~F.text.in_({"📝 Пост", "❓ Помощь", "ℹ️ Статус"}))
-async def generate_post(message: types.Message):
+@dp.message(PostGeneration.waiting_for_topic)
+async def generate_post(message: types.Message, state: FSMContext):
     topic = message.text.strip()
+    user_id = message.from_user.id
+    
+    # Get the post type from state
+    data = await state.get_data()
+    post_type = data.get("post_type", "text")
+    
     await message.answer(f"<b>🔄 Генерирую</b> пост про <i>{topic}</i>{' +RAG' if RAG_ENABLED else ''}... ⏳10-20с")
     
+    # Generate content
     content = await generate_content(topic)
-    await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
+    
+    # Track statistics
+    stats_tracker.record_post(user_id, topic, post_type)
+    
+    if post_type == "images" and UNSPLASH_API_KEY:
+        # Fetch images for the post
+        await message.answer("🖼️ Ищу подходящие изображения...")
+        image_urls = image_fetcher.search_images(topic, max_images=3)
+        
+        if image_urls:
+            # Send text with images
+            try:
+                # Create media group
+                media = []
+                for i, url in enumerate(image_urls):
+                    if i == 0:
+                        # Add caption to first image
+                        media.append(InputMediaPhoto(media=url, caption=f"<b>✨ Готовый пост:</b>\n\n{content}"))
+                    else:
+                        media.append(InputMediaPhoto(media=url))
+                
+                await message.answer_media_group(media)
+                logger.info(f"Post with {len(image_urls)} images sent to user {user_id}")
+            except Exception as e:
+                logger.error(f"Error sending images: {e}")
+                # Fallback to text-only
+                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка загрузки изображений")
+        else:
+            # No images found, send text only
+            await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Изображения не найдены")
+    else:
+        # Text-only post
+        await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
+    
+    # Clear state
+    await state.clear()
 
 # 🕒 АВТОПОСТИНГ (восстановлен!)
 async def auto_post():
