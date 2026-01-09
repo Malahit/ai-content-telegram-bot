@@ -5,7 +5,7 @@ import random
 import requests
 from dotenv import load_dotenv
 from typing import Optional
-from statistics import stats_tracker
+from bot_statistics import stats_tracker
 from image_fetcher import image_fetcher
 
 # 🌐 Опционально: перевод (если нужно)
