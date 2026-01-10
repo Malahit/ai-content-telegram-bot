@@ -1,9 +1,37 @@
 # New Features Documentation
 
 ## Overview
-This document describes the new features added to the AI Content Telegram Bot v2.2.
+This document describes the features of the AI Content Telegram Bot v2.3.
 
-## 1. Post Types
+## 1. Yandex Wordstat Integration (NEW in v2.3)
+
+### 📊 SEO-Optimized Post Generation
+The bot now integrates with Yandex Wordstat to create SEO-optimized content based on real search statistics.
+
+**Features:**
+- Keyword analysis with monthly search volume
+- Related keywords discovery
+- SEO post generation (300 words, structured with H1/H2, 1.5% keyword density)
+- Smart caching (24-hour TTL)
+- Retry mechanism for reliability
+
+**How to use:**
+1. Send `/wordstat [keyword]` (e.g., `/wordstat фитнес`)
+2. View search statistics and related keywords
+3. Click "✍️ Создать SEO пост" to generate optimized content
+4. Click "🔄 Обновить данные" to refresh statistics
+
+**Technical Details:**
+- Uses Selenium WebDriver for scraping Yandex Wordstat
+- SQLite cache with automatic expiration
+- Integration with Perplexity API for content generation
+- See `WORDSTAT_DOCUMENTATION.md` for complete documentation
+
+**Requirements:**
+- Selenium, webdriver-manager, tenacity (included in requirements.txt)
+- Chrome/Chromium browser (auto-installed by webdriver-manager)
+
+## 2. Post Types
 
 The bot now supports two types of posts:
 
@@ -35,7 +63,7 @@ The bot now supports two types of posts:
 - If images cannot be fetched (API error, no results), the bot falls back to text-only
 - Clear error messages are shown to the user
 
-## 2. Statistics Feature (Admin Only)
+## 3. Statistics Feature (Admin Only)
 
 Track bot usage and popular content topics.
 
@@ -73,7 +101,7 @@ Track bot usage and popular content topics.
 - File is created automatically on first use
 - Data persists across bot restarts
 
-## 3. Configuration
+## 4. Configuration
 
 ### Required Environment Variables:
 ```bash
@@ -91,9 +119,11 @@ UNSPLASH_API_KEY=your_unsplash_api_key
 ADMIN_USER_IDS=123456789,987654321
 ```
 
+**Note:** Yandex Wordstat feature works without additional API keys. It uses Selenium for scraping and the existing `PPLX_API_KEY` for SEO post generation.
+
 See `.env.example` for a complete template.
 
-## 4. User Interface Updates
+## 5. User Interface Updates
 
 ### Updated Keyboard Layout:
 
@@ -117,7 +147,7 @@ See `.env.example` for a complete template.
 └─────────────────────────────────┘
 ```
 
-## 5. Logging
+## 6. Logging
 
 All new features include comprehensive logging:
 
@@ -128,7 +158,7 @@ All new features include comprehensive logging:
 
 Check logs to monitor bot usage and troubleshoot issues.
 
-## 6. Error Handling
+## 7. Error Handling
 
 The implementation includes robust error handling:
 
@@ -146,7 +176,7 @@ The implementation includes robust error handling:
    - Non-admin users get clear "Access Denied" message
    - Statistics button not shown to non-admins
 
-## 7. Future Enhancements
+## 8. Future Enhancements
 
 Potential improvements for future versions:
 
@@ -156,8 +186,14 @@ Potential improvements for future versions:
 - Multiple image sources (Pexels, Pixabay)
 - User-specific statistics
 - Scheduled posts with images
+- **Wordstat enhancements:**
+  - Historical keyword tracking
+  - Keyword comparison feature
+  - Regional Wordstat data (beyond Yandex.ru)
+  - Automatic SEO reports
+  - Integration with Google Analytics
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### Images not showing:
 - ✅ Check `UNSPLASH_API_KEY` is set correctly
@@ -174,7 +210,19 @@ Potential improvements for future versions:
 - ✅ Check logs for errors
 - ✅ Verify the file is not corrupted
 
-## 9. API Rate Limits
+### Wordstat not working:
+- ✅ Install Chrome/Chromium: `sudo apt-get install chromium-browser`
+- ✅ Check internet connection to wordstat.yandex.ru
+- ✅ Verify Selenium dependencies are installed
+- ✅ Check logs for detailed error messages
+- ✅ Try clearing cache: delete `wordstat_cache.db`
+
+### Wordstat returns "N/A":
+- ✅ Yandex may have changed their page structure
+- ✅ Try a different keyword
+- ✅ Check if Yandex Wordstat website is accessible in your region
+
+## 10. API Rate Limits
 
 ### Unsplash API:
 - **Free Tier:** 50 requests/hour
@@ -182,16 +230,26 @@ Potential improvements for future versions:
 - **Fallback:** Bot automatically handles API failures
 
 ### Perplexity API:
-- Unchanged from previous version
+- Used for both regular posts and SEO posts
 - Rate limits depend on your plan
+- Wordstat SEO posts may use slightly more tokens (~1000 vs 800)
 
-## 10. Security Considerations
+### Yandex Wordstat:
+- **No official API** - uses web scraping
+- **24-hour cache** to minimize requests
+- **Retry logic** with exponential backoff
+- **Recommendation:** Don't abuse the scraping (respects Yandex's resources)
+
+## 11. Security Considerations
 
 - ✅ Admin user IDs are stored in `.env` (not in code)
 - ✅ Statistics file is gitignored (not committed to repo)
+- ✅ Wordstat cache database is gitignored
 - ✅ API keys are never logged or exposed
 - ✅ User data is minimal (only user IDs tracked)
 - ✅ No personally identifiable information stored
+- ✅ Selenium runs in headless mode (no GUI exposure)
+- ✅ Web scraping is done responsibly with caching
 
 ---
 
