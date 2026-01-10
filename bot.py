@@ -31,7 +31,7 @@ except ImportError:
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -67,6 +67,10 @@ dp = Dispatcher(storage=MemoryStorage())
 class PostGeneration(StatesGroup):
     waiting_for_topic = State()
     post_type = State()  # "text" or "images"
+
+# FSM States for wordstat
+class WordStatStates(StatesGroup):
+    waiting_for_keyword = State()
 
 # Main keyboard for all users
 kb = ReplyKeyboardMarkup(
@@ -231,7 +235,7 @@ async def generate_post(message: types.Message, state: FSMContext):
     if post_type == "images" and UNSPLASH_API_KEY:
         # Fetch images for the post
         await message.answer("🖼️ Ищу подходящие изображения...")
-        image_urls = image_fetcher.search_images(topic, max_images=3)
+        image_urls = await image_fetcher.search_images(topic, max_images=3)
         
         if image_urls:
             # Send text with images
@@ -260,6 +264,86 @@ async def generate_post(message: types.Message, state: FSMContext):
     
     # Clear state
     await state.clear()
+
+# /wordstat command handler
+@dp.message(Command("wordstat"))
+async def wordstat_command(message: types.Message, state: FSMContext):
+    """Handle /wordstat command for SEO posts"""
+    await state.set_state(WordStatStates.waiting_for_keyword)
+    await message.answer(
+        "🎯 <b>SEO Wordstat Post Generator</b>\n\n"
+        "Введи ключевое слово для SEO-поста:"
+    )
+
+@dp.message(WordStatStates.waiting_for_keyword)
+async def wordstat_generate(message: types.Message, state: FSMContext):
+    """Generate SEO post for wordstat keyword"""
+    keyword = message.text.strip()
+    user_id = message.from_user.id
+    
+    await message.answer(f"<b>🔄 Генерирую SEO-пост</b> для ключевика <i>{keyword}</i>... ⏳")
+    
+    # Generate SEO content
+    seo_prompt = f"Напиши SEO-оптимизированный пост для ключевого слова: {keyword}. " \
+                 f"200-300 слов, используй эмодзи, структурированный текст, добавь CTA."
+    content = await generate_content(seo_prompt)
+    
+    # Track statistics
+    stats_tracker.record_post(user_id, keyword, "text")
+    
+    # Create inline keyboard with photo option
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🖼️ Пост с фото", callback_data=f"seo_post_image:{keyword}")]
+    ])
+    
+    await message.answer(
+        f"<b>✨ SEO-пост для '{keyword}':</b>\n\n{content}",
+        reply_markup=keyboard
+    )
+    
+    await state.clear()
+
+@dp.callback_query(F.data.startswith("seo_post_image:"))
+async def seo_post_with_image_callback(callback: types.CallbackQuery):
+    """Handle callback for SEO post with image"""
+    # Extract keyword from callback data
+    keyword = callback.data.split(":", 1)[1]
+    user_id = callback.from_user.id
+    
+    await callback.message.answer("🖼️ Ищу подходящее изображение...")
+    
+    # Fetch image
+    image_url = await image_fetcher.fetch_image(keyword)
+    
+    if image_url:
+        try:
+            # Generate SEO content
+            seo_prompt = f"Напиши SEO-оптимизированный пост для ключевого слова: {keyword}. " \
+                         f"200-300 слов, используй эмодзи, структурированный текст, добавь CTA."
+            content = await generate_content(seo_prompt)
+            
+            # Track statistics
+            stats_tracker.record_post(user_id, keyword, "images")
+            
+            # Send photo with caption
+            await callback.message.answer_photo(
+                photo=image_url,
+                caption=f"<b>✨ SEO-пост с фото для '{keyword}':</b>\n\n{content}"
+            )
+            
+            logger.info(f"SEO post with image sent for keyword: {keyword}")
+        except Exception as e:
+            logger.error(f"Error sending SEO post with image: {e}")
+            await callback.message.answer(
+                f"⚠️ Ошибка при отправке изображения. Попробуйте еще раз."
+            )
+    else:
+        await callback.message.answer(
+            f"⚠️ Не удалось найти изображение для '{keyword}'. "
+            f"Попробуйте другое ключевое слово."
+        )
+    
+    await callback.answer()
 
 # 🕒 АВТОПОСТИНГ (восстановлен!)
 async def auto_post():
