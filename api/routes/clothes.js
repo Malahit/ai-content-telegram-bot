@@ -49,8 +49,8 @@ const defaultClothes = [
 // GET /clothes - Return all clothes
 router.get('/', async (req, res) => {
   try {
-    // Try to fetch from database first
-    const clothes = await Clothes.find();
+    // Try to fetch from database first (with a reasonable limit)
+    const clothes = await Clothes.find().limit(100);
     
     // If database is empty, return default data
     if (clothes.length === 0) {
