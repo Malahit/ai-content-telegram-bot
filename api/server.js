@@ -4,7 +4,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
@@ -15,7 +15,10 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ai-con
 
 mongoose.connect(MONGODB_URI)
   .then(() => console.log('MongoDB connected successfully'))
-  .catch(err => console.error('MongoDB connection error:', err));
+  .catch(err => {
+    console.warn('MongoDB connection error:', err.message);
+    console.warn('Server will continue to operate with default data');
+  });
 
 // Routes
 const clothesRoutes = require('./routes/clothes');
