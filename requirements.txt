@@ -8,6 +8,10 @@ openai==1.109.1  # Для Perplexity compatibility
 aiohttp==3.9.1
 tenacity==8.2.3
 
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+
 # RAG
 langchain==0.3.2
 langchain-community==0.3.1
