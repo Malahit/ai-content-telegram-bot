@@ -8,6 +8,18 @@ from typing import Optional
 from bot_statistics import stats_tracker
 from image_fetcher import image_fetcher
 
+# Yandex Wordstat integration
+try:
+    from wordstat_parser import wordstat_parser
+    from seo_post_generator import SEOPostGenerator
+    WORDSTAT_ENABLED = True
+    print("✅ Yandex Wordstat активирован!")
+except ImportError:
+    WORDSTAT_ENABLED = False
+    wordstat_parser = None
+    SEOPostGenerator = None
+    print("⚠️ Wordstat недоступен")
+
 # 🌐 Опционально: перевод (если нужно)
 try:
     from langdetect import detect
@@ -31,7 +43,7 @@ except ImportError:
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -59,14 +71,23 @@ if not PPLX_API_KEY:
 print(f"🚀 BOT_TOKEN: ✅ | PPLX_API_KEY: ✅ | CHANNEL_ID: {CHANNEL_ID}")
 print(f"✅ RAG: {'ON' if RAG_ENABLED else 'OFF'} | 🌐 Translate: {'ON' if TRANSLATE_ENABLED else 'OFF'}")
 print(f"🖼️ Unsplash: {'ON' if UNSPLASH_API_KEY else 'OFF'} | 👥 Admins: {len(ADMIN_USER_IDS)}")
+print(f"📊 Wordstat: {'ON' if WORDSTAT_ENABLED else 'OFF'}")
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
+
+# Initialize SEO post generator if Wordstat is enabled
+seo_generator = SEOPostGenerator(PPLX_API_KEY) if WORDSTAT_ENABLED else None
 
 # FSM States for post generation
 class PostGeneration(StatesGroup):
     waiting_for_topic = State()
     post_type = State()  # "text" or "images"
+
+# FSM States for Wordstat
+class WordstatState(StatesGroup):
+    waiting_for_keyword = State()
+    showing_results = State()
 
 # Main keyboard for all users
 kb = ReplyKeyboardMarkup(
@@ -153,18 +174,175 @@ async def generate_content(topic: str, max_tokens: int = 800) -> str:
         logger.error(f"API Error: {e}")
         return f"❌ API недоступен: {str(e)[:100]}"
 
+# Wordstat command handler
+@dp.message(Command("wordstat"))
+async def wordstat_command(message: types.Message, state: FSMContext):
+    """Handle /wordstat command"""
+    if not WORDSTAT_ENABLED:
+        await message.answer("❌ <b>Wordstat недоступен!</b>\n\nУстановите необходимые зависимости: selenium, webdriver-manager, tenacity")
+        return
+    
+    # Get keyword from command or ask for it
+    command_parts = message.text.split(maxsplit=1)
+    
+    if len(command_parts) > 1:
+        # Keyword provided with command
+        keyword = command_parts[1].strip()
+        await process_wordstat_keyword(message, keyword, state)
+    else:
+        # Ask for keyword
+        await state.set_state(WordstatState.waiting_for_keyword)
+        await message.answer(
+            "🔍 <b>Yandex Wordstat</b>\n\n"
+            "Введите ключевое слово для анализа:\n"
+            "<i>Например: фитнес, SMM, недвижимость</i>"
+        )
+
+@dp.message(WordstatState.waiting_for_keyword)
+async def wordstat_keyword_input(message: types.Message, state: FSMContext):
+    """Handle keyword input for Wordstat"""
+    keyword = message.text.strip()
+    await process_wordstat_keyword(message, keyword, state)
+
+async def process_wordstat_keyword(message: types.Message, keyword: str, state: FSMContext):
+    """Process Wordstat request for a keyword"""
+    # Send processing message
+    processing_msg = await message.answer(
+        f"🔍 <b>Анализирую запрос:</b> <i>{keyword}</i>\n\n"
+        "⏳ Это может занять 10-30 секунд..."
+    )
+    
+    try:
+        # Get Wordstat data
+        wordstat_data = wordstat_parser.get_wordstat_data(keyword)
+        
+        # Store data in state for later use
+        await state.update_data(
+            keyword=keyword,
+            wordstat_data=wordstat_data
+        )
+        await state.set_state(WordstatState.showing_results)
+        
+        # Format results
+        search_volume = wordstat_data.get("search_volume", "N/A")
+        related_keywords = wordstat_data.get("related_keywords", [])
+        error = wordstat_data.get("error")
+        
+        result_text = f"📊 <b>Yandex Wordstat - Результаты</b>\n\n"
+        result_text += f"🔑 <b>Ключевое слово:</b> {keyword}\n"
+        result_text += f"📈 <b>Запросов в месяц:</b> {search_volume}\n"
+        
+        if related_keywords:
+            result_text += f"\n🔗 <b>Связанные запросы ({len(related_keywords)}):</b>\n"
+            for i, kw in enumerate(related_keywords[:10], 1):
+                result_text += f"{i}. {kw}\n"
+        
+        if error:
+            result_text += f"\n⚠️ <i>Частичные данные (ошибка парсинга)</i>"
+        
+        # Create inline keyboard
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✍️ Создать SEO пост",
+                    callback_data=f"wordstat_seo_{keyword}"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="🔄 Обновить данные",
+                    callback_data=f"wordstat_retry_{keyword}"
+                )
+            ]
+        ])
+        
+        # Delete processing message and send results
+        await processing_msg.delete()
+        await message.answer(result_text, reply_markup=keyboard)
+        
+    except Exception as e:
+        logger.error(f"Error processing Wordstat request: {e}")
+        await processing_msg.edit_text(
+            f"❌ <b>Ошибка получения данных</b>\n\n"
+            f"<i>{str(e)[:200]}</i>\n\n"
+            "Попробуйте другое ключевое слово или повторите позже."
+        )
+        await state.clear()
+
+# Callback handler for "Generate SEO Post"
+@dp.callback_query(F.data.startswith("wordstat_seo_"))
+async def wordstat_generate_seo(callback: types.CallbackQuery, state: FSMContext):
+    """Handle Generate SEO Post button"""
+    await callback.answer()
+    
+    # Extract keyword from callback data
+    keyword = callback.data.replace("wordstat_seo_", "")
+    
+    # Get wordstat data from state
+    data = await state.get_data()
+    wordstat_data = data.get("wordstat_data")
+    
+    if not wordstat_data:
+        await callback.message.answer("❌ Данные не найдены. Используйте /wordstat снова.")
+        await state.clear()
+        return
+    
+    # Send generating message
+    await callback.message.answer(
+        f"✍️ <b>Генерирую SEO-пост...</b>\n\n"
+        f"🔑 Ключевое слово: <i>{keyword}</i>\n"
+        f"⏳ Подождите 15-30 секунд..."
+    )
+    
+    try:
+        # Generate SEO post
+        seo_post = seo_generator.generate_seo_post(keyword, wordstat_data)
+        
+        # Send the post
+        await callback.message.answer(
+            f"<b>✨ SEO-пост готов:</b>\n\n{seo_post}"
+        )
+        
+        # Clear state
+        await state.clear()
+        
+    except Exception as e:
+        logger.error(f"Error generating SEO post: {e}")
+        await callback.message.answer(
+            f"❌ <b>Ошибка генерации SEO-поста</b>\n\n"
+            f"<i>{str(e)[:200]}</i>"
+        )
+
+# Callback handler for "Retry for Data"
+@dp.callback_query(F.data.startswith("wordstat_retry_"))
+async def wordstat_retry(callback: types.CallbackQuery, state: FSMContext):
+    """Handle Retry for Data button"""
+    await callback.answer("🔄 Обновляю данные...")
+    
+    # Extract keyword from callback data
+    keyword = callback.data.replace("wordstat_retry_", "")
+    
+    # Process keyword again (force fresh data)
+    await process_wordstat_keyword(callback.message, keyword, state)
+
+
 @dp.message(CommandStart())
 async def start_handler(message: types.Message):
     rag_status = "✅ RAG" if RAG_ENABLED else "⚠️ Без RAG"
     translate_status = "🌐 RU/EN" if TRANSLATE_ENABLED else ""
     images_status = "🖼️ Images" if UNSPLASH_API_KEY else ""
+    wordstat_status = "📊 Wordstat" if WORDSTAT_ENABLED else ""
     user_keyboard = get_keyboard(message.from_user.id)
     
+    wordstat_info = ""
+    if WORDSTAT_ENABLED:
+        wordstat_info = f"\n📊 <b>/wordstat [ключ]</b> - SEO анализ Яндекс.Вордстат\n"
+    
     await message.answer(
-        f"<b>🚀 AI Content Bot v2.2 PROD {rag_status} {translate_status} {images_status}</b>\n\n"
+        f"<b>🚀 AI Content Bot v2.3 PROD {rag_status} {translate_status} {images_status} {wordstat_status}</b>\n\n"
         f"💬 <i>Тема поста → готовый текст 200-300 слов!</i>\n\n"
         f"📝 <b>Пост</b> - только текст\n"
-        f"🖼️ <b>Пост с фото</b> - текст + до 3 изображений\n\n"
+        f"🖼️ <b>Пост с фото</b> - текст + до 3 изображений{wordstat_info}\n"
         f"📡 Автопостинг: <code>{CHANNEL_ID}</code> (каждые 6ч)\n"
         f"⚙️ max_tokens=800 | sonar-small-online\n\n"
         f"<b>Примеры:</b> SMM Москва | фитнес | завтрак",
@@ -176,13 +354,17 @@ async def menu_handler(message: types.Message, state: FSMContext):
     rag_status = "с RAG" if RAG_ENABLED else "обычный"
     if message.text == "❓ Помощь":
         await state.clear()  # Clear any active state
+        wordstat_help = ""
+        if WORDSTAT_ENABLED:
+            wordstat_help = f"• 📊 <b>/wordstat [ключ]</b> - SEO анализ\n"
         await message.answer(
             f"🎯 <b>Как использовать:</b>\n"
             f"• 📝 <b>Пост</b> - только текст\n"
             f"• 🖼️ <b>Пост с фото</b> - текст + 3 изображения\n"
+            f"{wordstat_help}"
             f"• Пиши тему, получи готовый контент!\n"
             f"• 🌐 Авто RU/EN перевод\n\n"
-            f"<b>Команды:</b> /start\n"
+            f"<b>Команды:</b> /start{', /wordstat' if WORDSTAT_ENABLED else ''}\n"
             f"<code>Техподдержка: @твой_nick</code>"
         )
     elif message.text == "ℹ️ Статус":
@@ -193,6 +375,7 @@ async def menu_handler(message: types.Message, state: FSMContext):
             f"📚 RAG: {'ON' if RAG_ENABLED else 'OFF'}\n"
             f"🌐 Translate: {'ON' if TRANSLATE_ENABLED else 'OFF'}\n"
             f"🖼️ Images: {'ON' if UNSPLASH_API_KEY else 'OFF'}\n"
+            f"📊 Wordstat: {'ON' if WORDSTAT_ENABLED else 'OFF'}\n"
             f"⏰ Автопост: каждые 6ч → {CHANNEL_ID}"
         )
     elif message.text == "📊 Статистика":
