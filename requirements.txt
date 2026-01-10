@@ -5,7 +5,7 @@ apscheduler==3.10.4
 langdetect==1.0.9
 deep-translator==1.11.4
 openai==1.109.1  # Для Perplexity compatibility
-aiohttp==3.9.1
+aiohttp==3.13.3
 tenacity==8.2.3
 
 # Testing

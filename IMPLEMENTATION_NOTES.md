@@ -57,7 +57,7 @@ This PR implements comprehensive improvements to the image fetching system and a
 - Added `PIXABAY_API_KEY`
 
 **`requirements.txt`**:
-- Added `aiohttp==3.9.1`
+- Added `aiohttp==3.13.3` (patched version, fixes CVE vulnerabilities)
 - Added `tenacity==8.2.3`
 - Added `pytest==7.4.3`
 - Added `pytest-asyncio==0.21.1`
@@ -175,6 +175,10 @@ No breaking changes! The bot works exactly as before, just better:
 ✅ SQLite file gitignored
 ✅ User input sanitized (lowercase keywords)
 ✅ No SQL injection risk (parameterized queries)
+✅ **aiohttp 3.13.3** - Patched version fixing:
+   - CVE: zip bomb vulnerability in auto_decompress
+   - CVE: DoS from malformed POST requests
+   - CVE: directory traversal vulnerability
 
 ## Known Limitations
 

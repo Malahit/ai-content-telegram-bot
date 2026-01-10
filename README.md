@@ -262,6 +262,7 @@ python -m pytest tests/test_image_fetcher.py -v
 - ✅ Statistics file excluded from git
 - ✅ No sensitive data in logs
 - ✅ Minimal user data collection
+- ✅ **aiohttp 3.13.3** - Patched version (fixes CVE vulnerabilities)
 
 ## Contributing
 
