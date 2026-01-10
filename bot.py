@@ -231,7 +231,14 @@ async def generate_post(message: types.Message, state: FSMContext):
     if post_type == "images" and UNSPLASH_API_KEY:
         # Fetch images for the post
         await message.answer("🖼️ Ищу подходящие изображения...")
-        image_urls = image_fetcher.search_images(topic, max_images=3)
+        try:
+            image_urls = await image_fetcher.search_images(topic, max_images=3)
+        except Exception as e:
+            logger.error(f"Image fetching failed completely: {e}")
+            image_urls = []
+            # Inform admin users about the failure
+            if user_id in ADMIN_USER_IDS:
+                await message.answer(f"⚠️ <b>Admin Notice:</b> Image API failure - {str(e)[:100]}")
         
         if image_urls:
             # Send text with images
@@ -248,12 +255,18 @@ async def generate_post(message: types.Message, state: FSMContext):
                 await message.answer_media_group(media)
                 logger.info(f"Post with {len(image_urls)} images sent to user {user_id}")
             except Exception as e:
-                logger.error(f"Error sending images: {e}")
+                logger.error(f"Error sending images to Telegram: {e}")
                 # Fallback to text-only
-                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка загрузки изображений")
+                error_msg = f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка отправки изображений"
+                if user_id in ADMIN_USER_IDS:
+                    error_msg += f"\n🔧 Причина: {str(e)[:100]}"
+                await message.answer(error_msg)
         else:
             # No images found, send text only
-            await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Изображения не найдены")
+            error_msg = f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Изображения не найдены"
+            if user_id in ADMIN_USER_IDS:
+                error_msg += "\n🔧 Все API сервисы недоступны или не настроены"
+            await message.answer(error_msg)
     else:
         # Text-only post
         await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")

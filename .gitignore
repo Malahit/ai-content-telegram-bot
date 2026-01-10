@@ -17,6 +17,10 @@ vectorstore/
 # Statistics data
 bot_statistics.json
 
+# Image cache database
+image_cache.db
+test_image_cache.db
+
 # Secrets & Keys
 knowledge/*.pdf
 knowledge/*.key
