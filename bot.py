@@ -276,11 +276,11 @@ async def auto_post():
 async def on_startup():
     # Validate Unsplash API key if configured
     if UNSPLASH_API_KEY:
-        logger.info("🔍 Проверка UNSPLASH_API_KEY...")
+        logger.info("🔍 Validating UNSPLASH_API_KEY...")
         try:
             image_fetcher.validate_api_key()
         except RuntimeError as e:
-            logger.error(f"Ошибка валидации UNSPLASH_API_KEY: {e}")
+            logger.error(f"UNSPLASH_API_KEY validation error: {e}")
             raise
     
     scheduler = AsyncIOScheduler()
