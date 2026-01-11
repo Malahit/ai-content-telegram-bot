@@ -276,7 +276,7 @@ async def auto_post():
 async def on_startup():
     # Validate Unsplash API key if configured
     if UNSPLASH_API_KEY:
-        logger.info("🔍 Validating UNSPLASH_API_KEY...")
+        logger.info("Validating UNSPLASH_API_KEY...")
         try:
             image_fetcher.validate_api_key()
         except RuntimeError as e:

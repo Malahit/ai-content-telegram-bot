@@ -47,10 +47,10 @@ class ImageFetcher:
             response = self.session.get(endpoint, timeout=self.timeout)
             
             if response.status_code == 200:
-                logger.info("✅ Unsplash API key validated successfully")
+                logger.info("Unsplash API key validated successfully")
                 return True
             elif response.status_code == 401:
-                error_msg = "❌ UNSPLASH_API_KEY is invalid (401 Unauthorized)"
+                error_msg = "UNSPLASH_API_KEY is invalid (401 Unauthorized)"
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
             else:
