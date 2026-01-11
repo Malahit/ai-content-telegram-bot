@@ -274,6 +274,15 @@ async def auto_post():
         logger.error(f"❌ Автопост failed: {e}")
 
 async def on_startup():
+    # Validate Unsplash API key if configured
+    if UNSPLASH_API_KEY:
+        logger.info("🔍 Проверка UNSPLASH_API_KEY...")
+        try:
+            image_fetcher.validate_api_key()
+        except RuntimeError as e:
+            logger.error(f"Ошибка валидации UNSPLASH_API_KEY: {e}")
+            raise
+    
     scheduler = AsyncIOScheduler()
     scheduler.add_job(auto_post, 'interval', hours=6)
     scheduler.start()

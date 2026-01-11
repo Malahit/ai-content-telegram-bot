@@ -27,6 +27,43 @@ class ImageFetcher:
                 "Accept-Version": "v1"
             })
     
+    def validate_api_key(self) -> bool:
+        """
+        Validate Unsplash API key by making a test request
+        
+        Returns:
+            True if API key is valid, False otherwise
+            
+        Raises:
+            RuntimeError: If API key is invalid (401 error)
+        """
+        if not self.api_key:
+            logger.warning("Unsplash API key not configured - skipping validation")
+            return False
+        
+        try:
+            # Make a test request to validate the API key
+            endpoint = f"{self.base_url}/photos/random"
+            response = self.session.get(endpoint, timeout=self.timeout)
+            
+            if response.status_code == 200:
+                logger.info("✅ Unsplash API key validated successfully")
+                return True
+            elif response.status_code == 401:
+                error_msg = "❌ UNSPLASH_API_KEY is invalid (401 Unauthorized)"
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
+            else:
+                logger.warning(f"Unexpected status code during validation: {response.status_code}")
+                return False
+                
+        except RuntimeError:
+            # Re-raise RuntimeError for invalid API key
+            raise
+        except Exception as e:
+            logger.error(f"Error validating Unsplash API key: {e}")
+            return False
+    
     def search_images(self, query: str, max_images: int = 3) -> List[str]:
         """
         Search for images based on query
