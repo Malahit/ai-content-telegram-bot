@@ -45,23 +45,20 @@ class ImageFetcher:
             # Make a test request to validate the API key
             endpoint = f"{self.base_url}/photos/random"
             response = self.session.get(endpoint, timeout=self.timeout)
-            
-            if response.status_code == 200:
-                logger.info("Unsplash API key validated successfully")
-                return True
-            elif response.status_code == 401:
-                error_msg = "UNSPLASH_API_KEY is invalid (401 Unauthorized)"
-                logger.error(error_msg)
-                raise RuntimeError(error_msg)
-            else:
-                logger.warning(f"Unexpected status code during validation: {response.status_code}")
-                return False
-                
-        except RuntimeError:
-            # Re-raise RuntimeError for invalid API key
-            raise
         except Exception as e:
+            # Network errors - log and return False (non-fatal)
             logger.error(f"Error validating Unsplash API key: {e}")
+            return False
+        
+        if response.status_code == 200:
+            logger.info("Unsplash API key validated successfully")
+            return True
+        elif response.status_code == 401:
+            error_msg = "UNSPLASH_API_KEY is invalid (401 Unauthorized)"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            logger.warning(f"Unexpected status code during validation: {response.status_code}")
             return False
     
     def search_images(self, query: str, max_images: int = 3) -> List[str]:
