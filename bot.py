@@ -47,7 +47,7 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PPLX_API_KEY = os.getenv("PPLX_API_KEY", "PERPLEXITY_API_KEY")
 CHANNEL_ID = os.getenv("CHANNEL_ID", "@content_ai_helper_bot")  # Из .env!
-UNSPLASH_API_KEY = os.getenv("UNSPLASH_API_KEY")  # API key for Unsplash
+PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")  # API key for Pexels
 ADMIN_USER_IDS = os.getenv("ADMIN_USER_IDS", "").split(",")  # Comma-separated admin IDs
 ADMIN_USER_IDS = [int(uid.strip()) for uid in ADMIN_USER_IDS if uid.strip().isdigit()]
 
@@ -58,7 +58,7 @@ if not PPLX_API_KEY:
 
 print(f"🚀 BOT_TOKEN: ✅ | PPLX_API_KEY: ✅ | CHANNEL_ID: {CHANNEL_ID}")
 print(f"✅ RAG: {'ON' if RAG_ENABLED else 'OFF'} | 🌐 Translate: {'ON' if TRANSLATE_ENABLED else 'OFF'}")
-print(f"🖼️ Unsplash: {'ON' if UNSPLASH_API_KEY else 'OFF'} | 👥 Admins: {len(ADMIN_USER_IDS)}")
+print(f"🖼️ Pexels: {'ON' if PEXELS_API_KEY else 'OFF'} | 👥 Admins: {len(ADMIN_USER_IDS)}")
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
@@ -157,7 +157,7 @@ async def generate_content(topic: str, max_tokens: int = 800) -> str:
 async def start_handler(message: types.Message):
     rag_status = "✅ RAG" if RAG_ENABLED else "⚠️ Без RAG"
     translate_status = "🌐 RU/EN" if TRANSLATE_ENABLED else ""
-    images_status = "🖼️ Images" if UNSPLASH_API_KEY else ""
+    images_status = "🖼️ Images" if PEXELS_API_KEY else ""
     user_keyboard = get_keyboard(message.from_user.id)
     
     await message.answer(
@@ -192,7 +192,7 @@ async def menu_handler(message: types.Message, state: FSMContext):
             f"✅ Perplexity: sonar-small-online\n"
             f"📚 RAG: {'ON' if RAG_ENABLED else 'OFF'}\n"
             f"🌐 Translate: {'ON' if TRANSLATE_ENABLED else 'OFF'}\n"
-            f"🖼️ Images: {'ON' if UNSPLASH_API_KEY else 'OFF'}\n"
+            f"🖼️ Images: {'ON' if PEXELS_API_KEY else 'OFF'}\n"
             f"⏰ Автопост: каждые 6ч → {CHANNEL_ID}"
         )
     elif message.text == "📊 Статистика":
@@ -228,7 +228,7 @@ async def generate_post(message: types.Message, state: FSMContext):
     # Track statistics
     stats_tracker.record_post(user_id, topic, post_type)
     
-    if post_type == "images" and UNSPLASH_API_KEY:
+    if post_type == "images" and PEXELS_API_KEY:
         # Fetch images for the post
         await message.answer("🖼️ Ищу подходящие изображения...")
         image_urls = image_fetcher.search_images(topic, max_images=3)
