@@ -16,7 +16,7 @@ class ImageFetcher:
     # Configuration constants
     DEFAULT_TIMEOUT = 10  # seconds
     
-    def __init__(self, api_key: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT):
+    def __init__(self, api_key: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT, validate: bool = False):
         self.api_key = api_key or os.getenv("PEXELS_API_KEY")
         self.base_url = "https://api.pexels.com/v1"
         self.timeout = timeout
@@ -25,8 +25,9 @@ class ImageFetcher:
             self.session.headers.update({
                 "Authorization": self.api_key
             })
-            # Validate API key on initialization
-            self._validate_api_key()
+            # Optionally validate API key on initialization
+            if validate:
+                self._validate_api_key()
     
     def _validate_api_key(self) -> bool:
         """
@@ -138,8 +139,11 @@ class ImageFetcher:
             logger.info(f"Fetched {len(image_urls)} random images")
             return image_urls
             
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             logger.error(f"Error fetching random images: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Unexpected error in get_random_images: {e}")
             return []
 
 
