@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import axios from 'axios';
+import {API_CONFIG, IMAGE_CONFIG} from '../config';
 
 const HomeScreen = ({navigation}) => {
   const [clothes, setClothes] = useState([]);
@@ -21,7 +22,10 @@ const HomeScreen = ({navigation}) => {
 
   const fetchClothes = async () => {
     try {
-      const response = await axios.get('http://localhost:3000/clothes');
+      const response = await axios.get(
+        `${API_CONFIG.BASE_URL}${API_CONFIG.ENDPOINTS.CLOTHES}`,
+        {timeout: API_CONFIG.TIMEOUT}
+      );
       setClothes(response.data);
       setLoading(false);
     } catch (error) {
@@ -78,7 +82,7 @@ const HomeScreen = ({navigation}) => {
       onPress={() => navigation.navigate('Detail', {item})}>
       <Image
         source={{
-          uri: `https://source.unsplash.com/300x200/?${item.category.toLowerCase()},fashion`,
+          uri: `${IMAGE_CONFIG.BASE_URL}/${IMAGE_CONFIG.SIZES.THUMBNAIL}?random=${item.id}`,
         }}
         style={styles.itemImage}
       />

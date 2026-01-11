@@ -7,6 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
 } from 'react-native';
+import {IMAGE_CONFIG} from '../config';
 
 const DetailScreen = ({route, navigation}) => {
   const {item} = route.params;
@@ -15,7 +16,7 @@ const DetailScreen = ({route, navigation}) => {
     <ScrollView style={styles.container}>
       <Image
         source={{
-          uri: `https://source.unsplash.com/400x300/?${item.category.toLowerCase()},fashion`,
+          uri: `${IMAGE_CONFIG.BASE_URL}/${IMAGE_CONFIG.SIZES.DETAIL}?random=${item.id}`,
         }}
         style={styles.image}
       />

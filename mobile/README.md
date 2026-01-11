@@ -58,14 +58,36 @@ Before running the application, ensure you have the following installed:
 
 ## API Configuration
 
-The app is configured to fetch data from `http://localhost:3000/clothes`.
+The app is configured to fetch data from `http://localhost:3000/clothes` by default.
 
 If the API is not available, the app will display mock data for demonstration purposes.
 
-To connect to a different API endpoint, modify the URL in `screens/HomeScreen.js`:
+### Changing the API Endpoint
+
+To connect to a different API endpoint, modify the `config.js` file:
 
 ```javascript
-const response = await axios.get('YOUR_API_URL');
+export const API_CONFIG = {
+  BASE_URL: 'https://your-api-url.com',  // Change this URL
+  ENDPOINTS: {
+    CLOTHES: '/clothes',
+  },
+  TIMEOUT: 10000,
+};
+```
+
+### Image Placeholders
+
+The app uses picsum.photos for placeholder images. To use a different service, modify `config.js`:
+
+```javascript
+export const IMAGE_CONFIG = {
+  BASE_URL: 'https://your-image-service.com',
+  SIZES: {
+    THUMBNAIL: '300/200',
+    DETAIL: '400/300',
+  },
+};
 ```
 
 ## Testing
