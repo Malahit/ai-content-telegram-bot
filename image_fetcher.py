@@ -43,10 +43,12 @@ class ImageFetcher:
         
         try:
             # Make a test request to validate the API key
+            # Using count=1 to minimize response size
             endpoint = f"{self.base_url}/photos/random"
-            response = self.session.get(endpoint, timeout=self.timeout)
-        except Exception as e:
-            # Network errors - log and return False (non-fatal)
+            params = {"count": 1}
+            response = self.session.get(endpoint, params=params, timeout=self.timeout)
+        except requests.exceptions.RequestException as e:
+            # Network/request errors - log and return False (non-fatal)
             logger.error(f"Error validating Unsplash API key: {e}")
             return False
         
