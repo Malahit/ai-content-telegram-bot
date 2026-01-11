@@ -11,7 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 class ImageFetcher:
-    """Fetches images from Pexels API"""
+    """
+    Fetches images from Pexels API
+    
+    Note: Pexels API expects the API key directly in the Authorization header
+    (not as a Bearer token). Simply pass your API key as-is.
+    """
     
     # Configuration constants
     DEFAULT_TIMEOUT = 10  # seconds
@@ -21,13 +26,15 @@ class ImageFetcher:
         self.base_url = "https://api.pexels.com/v1"
         self.timeout = timeout
         self.session = requests.Session()
+        self.validated = False
+        
         if self.api_key:
             self.session.headers.update({
                 "Authorization": self.api_key
             })
             # Optionally validate API key on initialization
             if validate:
-                self._validate_api_key()
+                self.validated = self._validate_api_key()
     
     def _validate_api_key(self) -> bool:
         """
