@@ -147,5 +147,5 @@ class ImageFetcher:
             return []
 
 
-# Global instance
-image_fetcher = ImageFetcher()
+# Global instance (validation disabled to avoid import-time network calls)
+image_fetcher = ImageFetcher(validate=False)
