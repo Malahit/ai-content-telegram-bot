@@ -1,6 +1,6 @@
 """
 Image fetching module for the Telegram bot.
-Fetches relevant images from Unsplash API based on post topic.
+Fetches relevant images from Pexels API based on post topic.
 """
 import os
 import logging
@@ -11,21 +11,49 @@ logger = logging.getLogger(__name__)
 
 
 class ImageFetcher:
-    """Fetches images from Unsplash API"""
+    """Fetches images from Pexels API"""
     
     # Configuration constants
     DEFAULT_TIMEOUT = 10  # seconds
     
     def __init__(self, api_key: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT):
-        self.api_key = api_key or os.getenv("UNSPLASH_API_KEY")
-        self.base_url = "https://api.unsplash.com"
+        self.api_key = api_key or os.getenv("PEXELS_API_KEY")
+        self.base_url = "https://api.pexels.com/v1"
         self.timeout = timeout
         self.session = requests.Session()
         if self.api_key:
             self.session.headers.update({
-                "Authorization": f"Client-ID {self.api_key}",
-                "Accept-Version": "v1"
+                "Authorization": self.api_key
             })
+            # Validate API key on initialization
+            self._validate_api_key()
+    
+    def _validate_api_key(self) -> bool:
+        """
+        Validate Pexels API key by making a test request
+        
+        Returns:
+            True if API key is valid, False otherwise
+        """
+        try:
+            endpoint = f"{self.base_url}/search"
+            params = {
+                "query": "nature",
+                "per_page": 1
+            }
+            response = self.session.get(endpoint, params=params, timeout=self.timeout)
+            
+            if response.status_code == 401:
+                logger.error("Pexels API key is invalid or unauthorized")
+                return False
+            
+            response.raise_for_status()
+            logger.info("Pexels API key validated successfully")
+            return True
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error validating Pexels API key: {e}")
+            return False
     
     def search_images(self, query: str, max_images: int = 3) -> List[str]:
         """
@@ -39,12 +67,12 @@ class ImageFetcher:
             List of image URLs
         """
         if not self.api_key:
-            logger.warning("Unsplash API key not configured")
+            logger.warning("Pexels API key not configured")
             return []
         
         try:
             # Search for photos
-            endpoint = f"{self.base_url}/search/photos"
+            endpoint = f"{self.base_url}/search"
             params = {
                 "query": query,
                 "per_page": max_images,
@@ -55,13 +83,13 @@ class ImageFetcher:
             response.raise_for_status()
             
             data = response.json()
-            results = data.get("results", [])
+            photos = data.get("photos", [])
             
-            # Extract regular quality image URLs
+            # Extract image URLs
             image_urls = []
-            for photo in results[:max_images]:
-                # Use 'regular' size for good quality without being too large
-                url = photo.get("urls", {}).get("regular")
+            for photo in photos[:max_images]:
+                # Use 'large' size for good quality
+                url = photo.get("src", {}).get("large")
                 if url:
                     image_urls.append(url)
             
@@ -69,7 +97,7 @@ class ImageFetcher:
             return image_urls
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching images from Unsplash: {e}")
+            logger.error(f"Error fetching images from Pexels: {e}")
             return []
         except Exception as e:
             logger.error(f"Unexpected error in image search: {e}")
@@ -77,7 +105,7 @@ class ImageFetcher:
     
     def get_random_images(self, count: int = 3) -> List[str]:
         """
-        Get random images
+        Get random images (curated photos from Pexels)
         
         Args:
             count: Number of random images to fetch
@@ -86,24 +114,24 @@ class ImageFetcher:
             List of image URLs
         """
         if not self.api_key:
-            logger.warning("Unsplash API key not configured")
+            logger.warning("Pexels API key not configured")
             return []
         
         try:
-            endpoint = f"{self.base_url}/photos/random"
+            endpoint = f"{self.base_url}/curated"
             params = {
-                "count": count,
-                "orientation": "landscape"
+                "per_page": count
             }
             
             response = self.session.get(endpoint, params=params, timeout=self.timeout)
             response.raise_for_status()
             
-            photos = response.json()
+            data = response.json()
+            photos = data.get("photos", [])
             image_urls = []
             
-            for photo in photos:
-                url = photo.get("urls", {}).get("regular")
+            for photo in photos[:count]:
+                url = photo.get("src", {}).get("large")
                 if url:
                     image_urls.append(url)
             
