@@ -4,7 +4,7 @@ Unit tests for image_fetcher module using mocks.
 Tests the Pexels API integration without requiring internet access.
 """
 import unittest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import logging
 from image_fetcher import ImageFetcher
 

@@ -140,5 +140,6 @@ class ImageFetcher:
             return []
 
 
-# Global instance
+# Global instance - will attempt to read PEXELS_API_KEY from environment
+# Note: If no API key is found, methods will return empty lists with a warning
 image_fetcher = ImageFetcher()
