@@ -32,10 +32,15 @@ class ImageFetcher:
         Validate Unsplash API key by making a test request
         
         Returns:
-            True if API key is valid, False otherwise
+            True if API key is valid and validation succeeded (200 OK)
+            False if no API key is configured, or if network/server errors occur
             
         Raises:
-            RuntimeError: If API key is invalid (401 error)
+            RuntimeError: If API key is invalid (401 Unauthorized)
+            
+        Note:
+            Returns False for transient errors to allow bot startup even if
+            Unsplash API is temporarily unavailable.
         """
         if not self.api_key:
             logger.warning("Unsplash API key not configured - skipping validation")

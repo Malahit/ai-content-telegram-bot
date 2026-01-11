@@ -278,6 +278,10 @@ async def on_startup():
     if UNSPLASH_API_KEY:
         logger.info("Validating UNSPLASH_API_KEY...")
         try:
+            # Note: validate_api_key() returns False for network errors (non-fatal)
+            # but raises RuntimeError for invalid API keys (fatal)
+            # We intentionally ignore the return value to allow bot startup
+            # even if Unsplash API is temporarily unavailable
             image_fetcher.validate_api_key()
         except RuntimeError as e:
             logger.error(f"UNSPLASH_API_KEY validation error: {e}")
