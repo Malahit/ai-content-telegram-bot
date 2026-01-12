@@ -8,18 +8,20 @@ This PR successfully implements the two major features requested:
 **What was implemented:**
 - ✅ Two distinct post types:
   - 📝 **Text-only posts**: Traditional AI-generated text content
-  - 🖼️ **Posts with images**: Text content + up to 3 relevant images from Unsplash
+  - 🖼️ **Posts with images**: Text content + up to 3 relevant images from Pexels
 - ✅ Updated user interface with dedicated buttons for each post type
 - ✅ FSM (Finite State Machine) implementation for clean state management
-- ✅ Unsplash API integration for fetching relevant images
+- ✅ Pexels API integration for fetching relevant images
 - ✅ Graceful error handling with fallback to text-only when images unavailable
+- ✅ Comprehensive logging for debugging and monitoring
 
 **Technical details:**
 - Created `image_fetcher.py` module with `ImageFetcher` class
 - Configurable timeout (default: 10 seconds)
-- Uses Unsplash's search API to find relevant images based on post topic
-- Returns "regular" quality images (optimal balance of quality and size)
+- Uses Pexels' search API to find relevant images based on post topic
+- Returns "large" quality images (optimal balance of quality and size)
 - Images sent as media group with text as caption on first image
+- Enhanced error handling with detailed logging of HTTP errors
 
 ### 2. Statistics Feature (Admin-Only)
 **What was implemented:**
@@ -43,10 +45,12 @@ This PR successfully implements the two major features requested:
 
 ### New Files:
 1. **bot_statistics.py** - Statistics tracking module
-2. **image_fetcher.py** - Unsplash API integration module
+2. **image_fetcher.py** - Pexels API integration module
 3. **.env.example** - Environment configuration template
 4. **FEATURES.md** - Comprehensive features documentation
 5. **IMPLEMENTATION_SUMMARY.md** - This file
+6. **test_image_fetcher.py** - Unit tests for image fetcher
+7. **test_pexels.py** - Integration test script for Pexels API
 
 ### Modified Files:
 1. **bot.py** - Main bot file with new features integrated
@@ -68,7 +72,7 @@ CHANNEL_ID=@your_channel
 ### Optional (new):
 ```bash
 # For posts with images feature
-UNSPLASH_API_KEY=your_unsplash_api_key
+PEXELS_API_KEY=your_pexels_api_key
 
 # For admin access to statistics
 ADMIN_USER_IDS=123456789,987654321
@@ -112,14 +116,17 @@ See `.env.example` for complete template.
 - ✅ Syntax validation (all files compile)
 - ✅ Statistics tracking tested with mock data
 - ✅ Image fetcher tested (handles missing API key gracefully)
+- ✅ Unit tests created for ImageFetcher class (8 tests passing)
+- ✅ Mock testing for Pexels API integration
+- ✅ Error handling verified with HTTP error simulations
 - ✅ Code review completed and all issues addressed
-- ✅ Security scan (CodeQL) - 0 vulnerabilities found
+- ✅ Security scan (CodeQL) - pending
 
 ### Manual Testing Required:
 - ⏳ Live bot testing with real Telegram account
-- ⏳ Testing with valid Unsplash API key
+- ⏳ Testing with valid Pexels API key
 - ⏳ Admin access verification with real user IDs
-- ⏳ Image fetching from Unsplash in production
+- ⏳ Image fetching from Pexels in production
 - ⏳ Statistics persistence across bot restarts
 
 ## 🛡️ Security & Privacy
@@ -153,13 +160,13 @@ See `.env.example` for complete template.
 
 ### For Render.com (current hosting):
 1. Add environment variables in Render dashboard:
-   - `UNSPLASH_API_KEY` (optional)
+   - `PEXELS_API_KEY` (optional, for images)
    - `ADMIN_USER_IDS` (optional, comma-separated)
 
 2. Deploy the new code (automatic from GitHub)
 
 3. Verify deployment in logs:
-   - Check for "🖼️ Unsplash: ON/OFF"
+   - Check for "🖼️ Pexels: ON/OFF"
    - Check for "👥 Admins: X"
 
 ### For other hosting platforms:
@@ -174,7 +181,7 @@ Suggestions for future improvements:
 - Export statistics to CSV/Excel
 - Time-based analytics (posts per day/week)
 - User-specific statistics
-- Image source selection (Pexels, Pixabay)
+- Additional image sources (Pixabay, Unsplash)
 - Image customization options
 - Scheduled posts with images
 - Statistics charts/graphs
@@ -185,9 +192,10 @@ Suggestions for future improvements:
 1. ✅ **Post and Post with Images**
    - ✅ Two post types implemented
    - ✅ Up to 3 images per post
-   - ✅ Unsplash API integration
+   - ✅ Pexels API integration (migrated from Unsplash)
    - ✅ Images aligned with post context
    - ✅ Separate buttons in UI
+   - ✅ Comprehensive error handling and logging
 
 2. ✅ **Bot Statistics Feature**
    - ✅ "Statistics" menu button
@@ -203,8 +211,15 @@ Suggestions for future improvements:
 
 ## ✨ Summary
 
-All requirements from the problem statement have been successfully implemented. The bot now supports two post types (text-only and with images), includes comprehensive statistics tracking for administrators, and maintains backward compatibility with existing functionality.
+All requirements from the problem statement have been successfully implemented. The bot now supports two post types (text-only and with images using Pexels API), includes comprehensive statistics tracking for administrators, and maintains backward compatibility with existing functionality.
 
-The implementation follows best practices with proper error handling, logging, security measures, and clean code structure. All automated tests pass, and the code is ready for deployment and manual testing.
+The implementation follows best practices with proper error handling, comprehensive logging, security measures, and clean code structure. All automated tests pass (8 unit tests), and the code is ready for deployment and manual testing.
+
+**Recent Changes:**
+- ✅ Migrated from Unsplash API to Pexels API
+- ✅ Enhanced error handling and logging
+- ✅ Updated all documentation
+- ✅ Added comprehensive unit tests
+- ✅ Updated .env.example with detailed comments
 
 **Status: ✅ READY FOR DEPLOYMENT**

@@ -19,7 +19,7 @@ The bot now supports two types of posts:
 
 ### 🖼️ Posts with Images
 - Generates text content PLUS up to 3 relevant images
-- Images are automatically fetched from Unsplash based on your topic
+- Images are automatically fetched from Pexels based on your topic
 - Images are sent as a media group with the text as caption
 
 **How to use:**
@@ -28,8 +28,8 @@ The bot now supports two types of posts:
 3. Receive generated text content with relevant images
 
 **Requirements:**
-- Requires `UNSPLASH_API_KEY` in `.env` file
-- Get your free API key at: https://unsplash.com/developers
+- Requires `PEXELS_API_KEY` in `.env` file
+- Get your free API key at: https://www.pexels.com/api/
 
 **Error Handling:**
 - If images cannot be fetched (API error, no results), the bot falls back to text-only
@@ -85,7 +85,7 @@ CHANNEL_ID=@your_channel
 ### Optional Environment Variables:
 ```bash
 # For posts with images feature
-UNSPLASH_API_KEY=your_unsplash_api_key
+PEXELS_API_KEY=your_pexels_api_key
 
 # For admin access to statistics
 ADMIN_USER_IDS=123456789,987654321
@@ -153,16 +153,17 @@ Potential improvements for future versions:
 - Export statistics to CSV/Excel
 - More detailed analytics (time-based trends)
 - Image selection/customization options
-- Multiple image sources (Pexels, Pixabay)
+- Additional image sources (Pixabay, Unsplash)
 - User-specific statistics
 - Scheduled posts with images
 
 ## 8. Troubleshooting
 
 ### Images not showing:
-- ✅ Check `UNSPLASH_API_KEY` is set correctly
-- ✅ Verify your Unsplash API key is active
+- ✅ Check `PEXELS_API_KEY` is set correctly
+- ✅ Verify your Pexels API key is active
 - ✅ Check bot logs for error messages
+- ✅ Ensure you haven't exceeded the rate limit (200 requests/hour)
 
 ### Statistics button not visible:
 - ✅ Verify your Telegram user ID is in `ADMIN_USER_IDS`
@@ -176,10 +177,11 @@ Potential improvements for future versions:
 
 ## 9. API Rate Limits
 
-### Unsplash API:
-- **Free Tier:** 50 requests/hour
+### Pexels API:
+- **Free Tier:** 200 requests/hour
 - **Recommendation:** Monitor usage in production
 - **Fallback:** Bot automatically handles API failures
+- **Documentation:** https://www.pexels.com/api/documentation/
 
 ### Perplexity API:
 - Unchanged from previous version
