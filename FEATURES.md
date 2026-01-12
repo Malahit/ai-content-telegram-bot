@@ -153,7 +153,7 @@ Potential improvements for future versions:
 - Export statistics to CSV/Excel
 - More detailed analytics (time-based trends)
 - Image selection/customization options
-- Additional image sources (Pixabay, Unsplash)
+- Multiple image sources (Pexels, Pixabay)
 - User-specific statistics
 - Scheduled posts with images
 
@@ -163,7 +163,6 @@ Potential improvements for future versions:
 - ✅ Check `PEXELS_API_KEY` is set correctly
 - ✅ Verify your Pexels API key is active
 - ✅ Check bot logs for error messages
-- ✅ Ensure you haven't exceeded the rate limit (200 requests/hour)
 
 ### Statistics button not visible:
 - ✅ Verify your Telegram user ID is in `ADMIN_USER_IDS`
@@ -181,7 +180,6 @@ Potential improvements for future versions:
 - **Free Tier:** 200 requests/hour
 - **Recommendation:** Monitor usage in production
 - **Fallback:** Bot automatically handles API failures
-- **Documentation:** https://www.pexels.com/api/documentation/
 
 ### Perplexity API:
 - Unchanged from previous version

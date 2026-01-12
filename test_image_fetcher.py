@@ -132,6 +132,36 @@ class TestImageFetcher(unittest.TestCase):
         # Should return empty list without making API call
         self.assertEqual(results, [])
         mock_get.assert_not_called()
+    
+    @patch('image_fetcher.requests.Session.get')
+    def test_validate_api_key_success(self, mock_get):
+        """Test successful API key validation"""
+        # Mock successful validation response
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"photos": [{"src": {"large": "test.jpg"}}]}
+        mock_get.return_value = mock_response
+        
+        # Test validation
+        fetcher = ImageFetcher(api_key=self.api_key, validate=True)
+        
+        # Assertions
+        self.assertTrue(fetcher.validated)
+        mock_get.assert_called_once()
+    
+    @patch('image_fetcher.requests.Session.get')
+    def test_validate_api_key_failure(self, mock_get):
+        """Test failed API key validation"""
+        # Mock 401 unauthorized response
+        mock_response = Mock()
+        mock_response.status_code = 401
+        mock_get.return_value = mock_response
+        
+        # Test validation
+        fetcher = ImageFetcher(api_key=self.api_key, validate=True)
+        
+        # Assertions
+        self.assertFalse(fetcher.validated)
 
 
 if __name__ == '__main__':
