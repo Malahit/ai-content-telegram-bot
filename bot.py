@@ -274,6 +274,19 @@ async def auto_post():
         logger.error(f"❌ Автопост failed: {e}")
 
 async def on_startup():
+    # Validate Unsplash API key if configured
+    if UNSPLASH_API_KEY:
+        logger.info("Validating UNSPLASH_API_KEY...")
+        try:
+            # Note: validate_api_key() returns False for network errors (non-fatal)
+            # but raises RuntimeError for invalid API keys (fatal)
+            # We intentionally ignore the return value to allow bot startup
+            # even if Unsplash API is temporarily unavailable
+            _ = image_fetcher.validate_api_key()
+        except RuntimeError as e:
+            logger.error(f"UNSPLASH_API_KEY validation error: {e}")
+            raise
+    
     scheduler = AsyncIOScheduler()
     scheduler.add_job(auto_post, 'interval', hours=6)
     scheduler.start()

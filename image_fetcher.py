@@ -63,6 +63,47 @@ class ImageFetcher:
             logger.error(f"Error validating Pexels API key: {e}")
             return False
     
+    def validate_api_key(self) -> bool:
+        """
+        Validate Unsplash API key by making a test request
+        
+        Returns:
+            True if API key is valid and validation succeeded (200 OK)
+            False if no API key is configured, or if network/server errors occur
+            
+        Raises:
+            RuntimeError: If API key is invalid (401 Unauthorized)
+            
+        Note:
+            Returns False for transient errors to allow bot startup even if
+            Unsplash API is temporarily unavailable.
+        """
+        if not self.api_key:
+            logger.warning("Unsplash API key not configured - skipping validation")
+            return False
+        
+        try:
+            # Make a test request to validate the API key
+            # Using count=1 to minimize response size
+            endpoint = f"{self.base_url}/photos/random"
+            params = {"count": 1}
+            response = self.session.get(endpoint, params=params, timeout=self.timeout)
+        except requests.exceptions.RequestException as e:
+            # Network/request errors - log and return False (non-fatal)
+            logger.error(f"Error validating Unsplash API key: {e}")
+            return False
+        
+        if response.status_code == 200:
+            logger.info("Unsplash API key validated successfully")
+            return True
+        elif response.status_code == 401:
+            error_msg = "UNSPLASH_API_KEY is invalid (401 Unauthorized)"
+            logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        else:
+            logger.warning(f"Unexpected status code during validation: {response.status_code}")
+            return False
+    
     def search_images(self, query: str, max_images: int = 3) -> List[str]:
         """
         Search for images based on query
