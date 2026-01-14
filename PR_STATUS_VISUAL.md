@@ -6,8 +6,10 @@
 Repository: Malahit/ai-content-telegram-bot
 Total Open PRs: 13 (including this PR #22)
 Open PRs Analyzed: 12 (excluding this PR #22)
-Analysis Date: 2026-01-14
+Analysis Date: 2026-01-14 03:58 UTC
+Version: v1.0
 Note: Counts reflect status as of analysis date and will change as PRs are merged/closed
+⚠️ This analysis becomes outdated as PRs are updated - re-run analysis if older than 1 week
 ```
 
 ## Status Legend
@@ -192,7 +194,7 @@ Step 5: New Features
 ### Group A: User Management (3 PRs)
 ```
 PR #8 ─┐
-PR #7 ─┼─→ Choose ONE → Merge
+PR #7 ─┤ Choose ONE → Merge
 PR #6 ─┘
 
 Criteria for selection:
@@ -205,7 +207,7 @@ Criteria for selection:
 ### Group B: Text Sanitization (2 PRs)
 ```
 PR #5 (Draft) ─┐
-PR #4         ─┘→ Choose ONE → Merge
+PR #4         ─┘ Choose ONE → Merge
 
 Note: PR #5 is draft, may be more recent
 ```
@@ -213,7 +215,7 @@ Note: PR #5 is draft, may be more recent
 ### Group C: Image Improvements (2 PRs)
 ```
 PR #12 (+1427, -74) ─┐
-PR #11 (+1575, -76) ─┘→ Choose ONE or MERGE features
+PR #11 (+1575, -76) ─┘ Choose ONE or MERGE features
 
 Both add:
 - Retry logic

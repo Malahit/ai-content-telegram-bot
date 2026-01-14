@@ -174,7 +174,7 @@ python test_*.py
 - [ ] All tests pass
 - [ ] Code review completed
 - [ ] Documentation updated
-- [ ] No security vulnerabilities (run `pip audit` or `npm audit`)
+- [ ] No security vulnerabilities (run `pip-audit` or `safety check` after installing)
 - [ ] Feature tested manually
 - [ ] Related PRs identified (duplicates, conflicts)
 
@@ -213,7 +213,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Run tests
         run: |
           pip install -r requirements.txt
