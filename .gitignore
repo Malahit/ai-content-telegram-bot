@@ -42,3 +42,22 @@ __marimo__/
 # PyPI / Deployment
 .pypirc
 node_modules/
+
+# Mobile / React Native
+mobile/node_modules/
+mobile/android/
+mobile/ios/
+mobile/.bundle/
+mobile/build/
+mobile/dist/
+mobile/coverage/
+mobile/.expo/
+mobile/.expo-shared/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+metro-config.js
