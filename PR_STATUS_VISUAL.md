@@ -4,8 +4,10 @@
 
 ```
 Repository: Malahit/ai-content-telegram-bot
-Total Open PRs: 13 (including this one #22)
+Total Open PRs: 13 (including this PR #22)
+Open PRs Analyzed: 12 (excluding this PR #22)
 Analysis Date: 2026-01-14
+Note: Counts reflect status as of analysis date and will change as PRs are merged/closed
 ```
 
 ## Status Legend
@@ -225,11 +227,14 @@ PR #11 also adds:
 ## Statistics
 
 ```
-Total PRs: 13
-├─ Conflicts: 1 (7.7%)
-├─ Duplicates: 7 (53.8%)
+Total Open PRs in Repository: 13 (including #22)
+PRs Analyzed: 12 (excluding #22)
+
+Status Breakdown (of 12 analyzed):
+├─ Conflicts: 1 (8.3%)
+├─ Duplicates: 7 (58.3%)
 ├─ Ready: 0 (0%)
-└─ Need Review: 11 (84.6%)
+└─ Need Review: 11 (91.7%)
 
 Duplicate groups: 3
 ├─ User Management: 3 PRs
