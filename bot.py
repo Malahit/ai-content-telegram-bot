@@ -1,36 +1,16 @@
+"""
+AI Content Telegram Bot - Main module.
+
+This bot generates AI-powered content for Telegram channels using Perplexity API.
+Supports optional RAG (Retrieval-Augmented Generation), translation, and image generation features.
+"""
+
 import asyncio
-import logging
-import os
 import random
-import requests
-from dotenv import load_dotenv
 from typing import Optional
-from bot_statistics import stats_tracker
-from image_fetcher import image_fetcher
-
-# 🌐 Опционально: перевод (если нужно)
-try:
-    from langdetect import detect
-    from deep_translator import GoogleTranslator
-    TRANSLATE_ENABLED = True
-    translator = GoogleTranslator(source='auto', target='ru')
-except ImportError:
-    TRANSLATE_ENABLED = False
-    print("⚠️ deep_translator недоступен")
-
-# 🔥 RAG (опционально)
-try:
-    from rag import create_vectorstore
-    vectorstore = create_vectorstore()
-    RAG_ENABLED = True
-    print("✅ RAG активирован!")
-except ImportError:
-    RAG_ENABLED = False
-    vectorstore = None
-    print("⚠️ RAG недоступен")
 
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
@@ -39,28 +19,54 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-# Логирование
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Import custom modules
+from config import config
+from logger_config import logger
+from api_client import api_client, PerplexityAPIError
+from translation_service import translation_service
+from rag_service import rag_service
 
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-PPLX_API_KEY = os.getenv("PPLX_API_KEY", "PERPLEXITY_API_KEY")
-CHANNEL_ID = os.getenv("CHANNEL_ID", "@content_ai_helper_bot")  # Из .env!
-PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")  # API key for Pexels
-ADMIN_USER_IDS = os.getenv("ADMIN_USER_IDS", "").split(",")  # Comma-separated admin IDs
-ADMIN_USER_IDS = [int(uid.strip()) for uid in ADMIN_USER_IDS if uid.strip().isdigit()]
+# Import statistics and image fetcher from main
+try:
+    from bot_statistics import stats_tracker
+    STATS_ENABLED = True
+    logger.info("✅ Statistics tracking enabled")
+except ImportError:
+    STATS_ENABLED = False
+    stats_tracker = None
+    logger.warning("⚠️ bot_statistics module not available")
 
-if not BOT_TOKEN:
-    raise RuntimeError("❌ BOT_TOKEN не найден в .env!")
-if not PPLX_API_KEY:
-    raise RuntimeError("❌ PPLX_API_KEY не найден в .env!")
+try:
+    from image_fetcher import image_fetcher
+    IMAGES_ENABLED = bool(config.pexels_api_key)
+    logger.info(f"✅ Image fetcher {'enabled' if IMAGES_ENABLED else 'available but no API key'}")
+except ImportError:
+    IMAGES_ENABLED = False
+    image_fetcher = None
+    logger.warning("⚠️ image_fetcher module not available")
 
-print(f"🚀 BOT_TOKEN: ✅ | PPLX_API_KEY: ✅ | CHANNEL_ID: {CHANNEL_ID}")
-print(f"✅ RAG: {'ON' if RAG_ENABLED else 'OFF'} | 🌐 Translate: {'ON' if TRANSLATE_ENABLED else 'OFF'}")
-print(f"🖼️ Pexels: {'ON' if PEXELS_API_KEY else 'OFF'} | 👥 Admins: {len(ADMIN_USER_IDS)}")
+# Get admin user IDs from config
+ADMIN_USER_IDS = config.admin_user_ids
 
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+# Log startup information (without sensitive data)
+logger.info("=" * 60)
+logger.info("AI Content Telegram Bot v2.2 Starting...")
+logger.info("=" * 60)
+
+config_info = config.get_safe_config_info()
+logger.info(f"Configuration loaded: {config_info}")
+logger.info(f"RAG Status: {'ENABLED' if rag_service.is_enabled() else 'DISABLED'}")
+logger.info(f"Translation Status: {'ENABLED' if translation_service.is_enabled() else 'DISABLED'}")
+logger.info(f"Images Status: {'ENABLED' if IMAGES_ENABLED else 'DISABLED'}")
+logger.info(f"Statistics Status: {'ENABLED' if STATS_ENABLED else 'DISABLED'}")
+logger.info(f"Admin Users: {len(ADMIN_USER_IDS)}")
+
+
+# Initialize bot and dispatcher
+bot = Bot(
+    token=config.bot_token,
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+)
 dp = Dispatcher(storage=MemoryStorage())
 
 # FSM States for post generation
@@ -87,99 +93,128 @@ kb_admin = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
+
 def get_keyboard(user_id: int) -> ReplyKeyboardMarkup:
     """Get appropriate keyboard based on user role"""
     if user_id in ADMIN_USER_IDS:
         return kb_admin
     return kb
 
-async def detect_lang_and_translate(text: str) -> tuple[str, str]:
-    """🌐 RU/EN авто перевод"""
-    if not TRANSLATE_ENABLED:
-        return text, 'ru'
-    try:
-        detected = detect(text)
-        if detected == 'en':
-            translated = translator.translate(text)
-            return translated, detected
-        return text, detected
-    except:
-        return text, 'ru'
 
-async def generate_content(topic: str, max_tokens: int = 800) -> str:
-    """🎯 Perplexity API (работает!)"""
-    print(f"🔥 Генерируем: {topic}")
+async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
+    """
+    Generate content for a given topic using Perplexity API.
     
-    # 🔥 RAG контекст
-    rag_context = ""
-    rag_info = ""
-    if RAG_ENABLED and vectorstore:
-        relevant_docs = vectorstore.similarity_search(topic, k=2)
-        rag_context = "\n".join([doc.page_content[:400] for doc in relevant_docs])
-        rag_info = f"\n📚 {len(relevant_docs)} файлов"
-        print(f"✅ RAG: {len(relevant_docs)} docs")
+    This function orchestrates content generation by:
+    1. Retrieving RAG context if available
+    2. Calling the API to generate content
+    3. Applying translation if needed
+    4. Adding metadata about RAG sources
     
-    headers = {
-        "Authorization": f"Bearer {PPLX_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
-        "model": "sonar",  # ✅ Сегодняшний фикс!
-        "messages": [
-            {"role": "system", "content": "SMM-копирайтер Telegram. 200-300 слов, эмодзи, структура, CTA."},
-            {"role": "user", "content": f"{rag_context}\n\nПост про: {topic}"}
-        ],
-        "max_tokens": max_tokens,
-        "temperature": 0.8,
-        "stream": False
-    }
+    Args:
+        topic: The topic to generate content about
+        max_tokens: Maximum tokens for the response (optional)
+        
+    Returns:
+        str: Generated content with optional translation and metadata
+    """
+    logger.info(f"Starting content generation for topic: {topic}")
+    
+    # Get RAG context if available
+    rag_context, rag_info = rag_service.get_context(topic)
     
     try:
-        resp = requests.post(
-            "https://api.perplexity.ai/chat/completions",
-            headers=headers, json=data, timeout=45
-        )
-        print(f"📡 API: {resp.status_code}")
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"].strip()
+        # Generate content using API
+        content = api_client.generate_content(topic, rag_context, max_tokens)
         
-        # 🌐 Перевод
-        if TRANSLATE_ENABLED:
-            translated, lang = await detect_lang_and_translate(content)
-            content = f"{translated}\n\n🌐 [{lang.upper()}]"
+        # Apply translation if enabled
+        if translation_service.is_enabled():
+            translated, lang = await translation_service.detect_and_translate(content)
+            content = translation_service.add_language_marker(translated, lang)
         
-        return f"{content}{rag_info}"
+        # Add RAG info if available
+        final_content = f"{content}{rag_info}"
+        
+        logger.info("Content generation completed successfully")
+        return final_content
+        
+    except PerplexityAPIError as e:
+        logger.error(f"Content generation failed: {e}")
+        return f"❌ Не удалось сгенерировать контент. Попробуйте позже."
     except Exception as e:
-        logger.error(f"API Error: {e}")
-        return f"❌ API недоступен: {str(e)[:100]}"
+        logger.error(f"Unexpected error during content generation: {e}", exc_info=True)
+        return f"❌ Произошла ошибка. Пожалуйста, попробуйте снова."
+
 
 @dp.message(CommandStart())
 async def start_handler(message: types.Message):
-    rag_status = "✅ RAG" if RAG_ENABLED else "⚠️ Без RAG"
-    translate_status = "🌐 RU/EN" if TRANSLATE_ENABLED else ""
-    images_status = "🖼️ Images" if PEXELS_API_KEY else ""
-    user_keyboard = get_keyboard(message.from_user.id)
+    """
+    Handle /start command.
+    
+    Sends welcome message with bot information and usage instructions.
+    
+    Args:
+        message: Incoming message
+    """
+    logger.info(f"User {message.from_user.id} started the bot")
+    
+    rag_status = "✅ RAG" if rag_service.is_enabled() else "⚠️ Без RAG"
+    translate_status = "🌐 RU/EN" if translation_service.is_enabled() else ""
+    images_status = "🖼️ Images" if IMAGES_ENABLED else ""
     
     await message.answer(
         f"<b>🚀 AI Content Bot v2.2 PROD {rag_status} {translate_status} {images_status}</b>\n\n"
         f"💬 <i>Тема поста → готовый текст 200-300 слов!</i>\n\n"
-        f"📝 <b>Пост</b> - только текст\n"
-        f"🖼️ <b>Пост с фото</b> - текст + до 3 изображений\n\n"
-        f"📡 Автопостинг: <code>{CHANNEL_ID}</code> (каждые 6ч)\n"
-        f"⚙️ max_tokens=800 | sonar-small-online\n\n"
+        f"📡 Автопостинг: <code>{config.channel_id}</code> (каждые {config.autopost_interval_hours}ч)\n"
+        f"⚙️ max_tokens={config.max_tokens} | {config.api_model}\n\n"
         f"<b>Примеры:</b> SMM Москва | фитнес | завтрак",
-        reply_markup=user_keyboard
+        reply_markup=get_keyboard(message.from_user.id)
     )
 
-@dp.message(F.text.in_({"📝 Пост", "🖼️ Пост с фото", "❓ Помощь", "ℹ️ Статус", "📊 Статистика"}))
+
+@dp.message(F.text == "📝 Пост")
+async def text_post_handler(message: types.Message, state: FSMContext):
+    """Handle text-only post request"""
+    await state.set_state(PostGeneration.waiting_for_topic)
+    await state.update_data(post_type="text")
+    rag_status = "с RAG" if rag_service.is_enabled() else "обычный"
+    await message.answer(f"✍️ <b>Напиши тему поста</b> ({rag_status})!")
+
+
+@dp.message(F.text == "🖼️ Пост с фото")
+async def image_post_handler(message: types.Message, state: FSMContext):
+    """Handle post with images request"""
+    if not IMAGES_ENABLED:
+        await message.answer("❌ <b>Генерация изображений недоступна</b>\nAPI ключ Pexels не настроен.")
+        return
+    
+    await state.set_state(PostGeneration.waiting_for_topic)
+    await state.update_data(post_type="images")
+    rag_status = "с RAG" if rag_service.is_enabled() else "обычный"
+    await message.answer(f"✍️ <b>Напиши тему поста с фото</b> ({rag_status})!")
+
+
+@dp.message(F.text.in_({"❓ Помощь", "ℹ️ Статус", "📊 Статистика"}))
 async def menu_handler(message: types.Message, state: FSMContext):
-    rag_status = "с RAG" if RAG_ENABLED else "обычный"
+    """
+    Handle menu button presses.
+    
+    Responds to help, status and statistics requests with appropriate information.
+    
+    Args:
+        message: Incoming message
+        state: FSM context
+    """
+    logger.debug(f"Menu handler: {message.text}")
+    
+    rag_status = "с RAG" if rag_service.is_enabled() else "обычный"
+    
     if message.text == "❓ Помощь":
         await state.clear()  # Clear any active state
         await message.answer(
             f"🎯 <b>Как использовать:</b>\n"
             f"• 📝 <b>Пост</b> - только текст\n"
-            f"• 🖼️ <b>Пост с фото</b> - текст + 3 изображения\n"
+            f"• 🖼️ <b>Пост с фото</b> - текст + до 3 изображений\n"
             f"• Пиши тему, получи готовый контент!\n"
             f"• 🌐 Авто RU/EN перевод\n\n"
             f"<b>Команды:</b> /start\n"
@@ -189,11 +224,11 @@ async def menu_handler(message: types.Message, state: FSMContext):
         await state.clear()  # Clear any active state
         await message.answer(
             f"✅ Bot: Online\n"
-            f"✅ Perplexity: sonar-small-online\n"
-            f"📚 RAG: {'ON' if RAG_ENABLED else 'OFF'}\n"
-            f"🌐 Translate: {'ON' if TRANSLATE_ENABLED else 'OFF'}\n"
-            f"🖼️ Images: {'ON' if PEXELS_API_KEY else 'OFF'}\n"
-            f"⏰ Автопост: каждые 6ч → {CHANNEL_ID}"
+            f"✅ Perplexity: {config.api_model}\n"
+            f"📚 RAG: {'ON' if rag_service.is_enabled() else 'OFF'}\n"
+            f"🌐 Translate: {'ON' if translation_service.is_enabled() else 'OFF'}\n"
+            f"🖼️ Images: {'ON' if IMAGES_ENABLED else 'OFF'}\n"
+            f"⏰ Автопост: каждые {config.autopost_interval_hours}ч → {config.channel_id}"
         )
     elif message.text == "📊 Статистика":
         await state.clear()  # Clear any active state
@@ -202,58 +237,76 @@ async def menu_handler(message: types.Message, state: FSMContext):
             await message.answer("❌ <b>Доступ запрещён!</b> Эта функция только для администраторов.")
             return
         
+        if not STATS_ENABLED:
+            await message.answer("❌ <b>Статистика недоступна</b>\nМодуль статистики не установлен.")
+            return
+        
         report = stats_tracker.get_report()
         await message.answer(report)
-    else:
-        # Handle "📝 Пост" or "🖼️ Пост с фото"
-        post_type = "images" if message.text == "🖼️ Пост с фото" else "text"
-        await state.update_data(post_type=post_type)
-        await state.set_state(PostGeneration.waiting_for_topic)
-        await message.answer(f"✍️ <b>Напиши тему поста</b> ({rag_status})!")
+
 
 @dp.message(PostGeneration.waiting_for_topic)
 async def generate_post(message: types.Message, state: FSMContext):
+    """
+    Handle user text messages and generate content.
+    
+    Takes user's topic and generates a post using AI with optional RAG context.
+    Can generate text-only or posts with images based on FSM state.
+    
+    Args:
+        message: Incoming message with topic
+        state: FSM context
+    """
     topic = message.text.strip()
     user_id = message.from_user.id
+    logger.info(f"User {user_id} requested post about: {topic}")
     
     # Get the post type from state
     data = await state.get_data()
     post_type = data.get("post_type", "text")
     
-    await message.answer(f"<b>🔄 Генерирую</b> пост про <i>{topic}</i>{' +RAG' if RAG_ENABLED else ''}... ⏳10-20с")
+    rag_marker = ' +RAG' if rag_service.is_enabled() else ''
+    await message.answer(
+        f"<b>🔄 Генерирую</b> пост про <i>{topic}</i>{rag_marker}... ⏳10-20с"
+    )
     
     # Generate content
     content = await generate_content(topic)
     
     # Track statistics
-    stats_tracker.record_post(user_id, topic, post_type)
+    if STATS_ENABLED:
+        stats_tracker.record_post(user_id, topic, post_type)
     
-    if post_type == "images" and PEXELS_API_KEY:
+    if post_type == "images" and IMAGES_ENABLED:
         # Fetch images for the post
         await message.answer("🖼️ Ищу подходящие изображения...")
-        image_urls = image_fetcher.search_images(topic, max_images=3)
-        
-        if image_urls:
-            # Send text with images
-            try:
-                # Create media group
-                media = []
-                for i, url in enumerate(image_urls):
-                    if i == 0:
-                        # Add caption to first image
-                        media.append(InputMediaPhoto(media=url, caption=f"<b>✨ Готовый пост:</b>\n\n{content}"))
-                    else:
-                        media.append(InputMediaPhoto(media=url))
-                
-                await message.answer_media_group(media)
-                logger.info(f"Post with {len(image_urls)} images sent to user {user_id}")
-            except Exception as e:
-                logger.error(f"Error sending images: {e}")
-                # Fallback to text-only
-                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка загрузки изображений")
-        else:
-            # No images found, send text only
-            await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Изображения не найдены")
+        try:
+            image_urls = image_fetcher.search_images(topic, max_images=3)
+            
+            if image_urls:
+                # Send text with images
+                try:
+                    # Create media group
+                    media = []
+                    for i, url in enumerate(image_urls):
+                        if i == 0:
+                            # Add caption to first image
+                            media.append(InputMediaPhoto(media=url, caption=f"<b>✨ Готовый пост:</b>\n\n{content}"))
+                        else:
+                            media.append(InputMediaPhoto(media=url))
+                    
+                    await message.answer_media_group(media)
+                    logger.info(f"Post with {len(image_urls)} images sent to user {user_id}")
+                except Exception as e:
+                    logger.error(f"Error sending images: {e}")
+                    # Fallback to text-only
+                    await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка загрузки изображений")
+            else:
+                # No images found, send text only
+                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Изображения не найдены")
+        except Exception as e:
+            logger.error(f"Error fetching images: {e}")
+            await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка поиска изображений")
     else:
         # Text-only post
         await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
@@ -261,41 +314,78 @@ async def generate_post(message: types.Message, state: FSMContext):
     # Clear state
     await state.clear()
 
-# 🕒 АВТОПОСТИНГ (восстановлен!)
+
+# Autoposter configuration
+AUTOPOST_TOPICS = [
+    'SMM Москва',
+    'фитнес',
+    'питание',
+    'мотивация',
+    'бизнес'
+]
+
+
 async def auto_post():
-    topics = ['SMM Москва', 'фитнес', 'питание', 'мотивация', 'бизнес']
-    topic = random.choice(topics)
-    print(f"🕒 Автопост #{random.randint(1,999)}: {topic}")
+    """
+    Automated posting function.
+    
+    Selects a random topic from predefined list and posts generated
+    content to the configured channel.
+    """
+    topic = random.choice(AUTOPOST_TOPICS)
+    logger.info(f"🕒 Автопост: {topic}")
+    
     try:
         content = await generate_content(topic)
-        await bot.send_message(CHANNEL_ID, f"<b>🤖 Автопост {random.randint(1,999)}:</b>\n\n{content}")
-        logger.info(f"✅ Автопост: {topic} → {CHANNEL_ID}")
+        await bot.send_message(
+            config.channel_id,
+            f"<b>🤖 Автопост {random.randint(1,999)}:</b>\n\n{content}"
+        )
+        logger.info(f"✅ Автопост успешно опубликован: {topic} → {config.channel_id}")
     except Exception as e:
-        logger.error(f"❌ Автопост failed: {e}")
+        logger.error(f"❌ Ошибка автопоста: {e}", exc_info=True)
+
 
 async def on_startup():
-    # Validate Unsplash API key if configured
-    if UNSPLASH_API_KEY:
-        logger.info("Validating UNSPLASH_API_KEY...")
+    """
+    Bot startup function.
+    
+    Configures and starts the autoposter scheduler.
+    """
+    # Validate image API key if configured
+    if IMAGES_ENABLED and image_fetcher:
+        logger.info("Validating image API key...")
         try:
-            # Note: validate_api_key() returns False for network errors (non-fatal)
-            # but raises RuntimeError for invalid API keys (fatal)
-            # We intentionally ignore the return value to allow bot startup
-            # even if Unsplash API is temporarily unavailable
-            _ = image_fetcher.validate_api_key()
+            image_fetcher.validate_api_key()
         except RuntimeError as e:
-            logger.error(f"UNSPLASH_API_KEY validation error: {e}")
-            raise
+            logger.error(f"Image API key validation error: {e}")
+            # Don't raise - allow bot to start without images
     
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(auto_post, 'interval', hours=6)
+    scheduler.add_job(
+        auto_post,
+        'interval',
+        hours=config.autopost_interval_hours
+    )
     scheduler.start()
-    logger.info(f"🚀 Автопостинг запущен: каждые 6ч → {CHANNEL_ID}")
+    logger.info(
+        f"🚀 Автопостинг запущен: каждые {config.autopost_interval_hours}ч → {config.channel_id}"
+    )
+
 
 async def main():
-    logger.info("✅ BOT v2.1 PRODUCTION READY!")
+    """
+    Main entry point.
+    
+    Starts the bot and begins polling for updates.
+    """
+    logger.info("=" * 60)
+    logger.info("✅ BOT v2.2 PRODUCTION READY!")
+    logger.info("=" * 60)
+    
     await on_startup()
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
