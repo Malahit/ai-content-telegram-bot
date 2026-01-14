@@ -1,199 +1,284 @@
 """
 Image fetching module for the Telegram bot.
-Fetches relevant images from Pexels API based on post topic.
+Fetches relevant images from multiple APIs with retry logic, caching, and fallback support.
 """
 import os
 import logging
-import requests
-from typing import List, Optional
+import asyncio
+import sqlite3
+import time
+from typing import List, Optional, Tuple
+from datetime import datetime, timedelta
+
+import aiohttp
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger(__name__)
 
 
+class ImageCache:
+    """SQLite-based cache for image URLs with TTL"""
+    
+    def __init__(self, db_path: str = "image_cache.db", ttl_hours: int = 48):
+        self.db_path = db_path
+        self.ttl_seconds = ttl_hours * 3600
+        self._init_db()
+    
+    def _init_db(self):
+        """Initialize database schema"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS image_cache (
+                    keyword TEXT PRIMARY KEY,
+                    image_urls TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL
+                )
+            """)
+            conn.commit()
+    
+    def get_cached_images(self, keyword: str) -> Optional[List[str]]:
+        """
+        Retrieve cached images for a keyword if not expired
+        
+        Args:
+            keyword: Search keyword
+            
+        Returns:
+            List of image URLs or None if not cached or expired
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.execute(
+                "SELECT image_urls, timestamp FROM image_cache WHERE keyword = ?",
+                (keyword.lower(),)
+            )
+            row = cursor.fetchone()
+            
+            if row:
+                urls_str, timestamp = row
+                # Check if cache is still valid
+                if time.time() - timestamp < self.ttl_seconds:
+                    logger.info(f"Cache HIT for keyword: {keyword}")
+                    return urls_str.split('|')
+                else:
+                    # Clean up expired entry
+                    conn.execute("DELETE FROM image_cache WHERE keyword = ?", (keyword.lower(),))
+                    conn.commit()
+                    logger.info(f"Cache EXPIRED for keyword: {keyword}")
+            
+            logger.info(f"Cache MISS for keyword: {keyword}")
+            return None
+    
+    def cache_images(self, keyword: str, image_urls: List[str]):
+        """
+        Cache image URLs for a keyword
+        
+        Args:
+            keyword: Search keyword
+            image_urls: List of image URLs to cache
+        """
+        if not image_urls:
+            return
+        
+        with sqlite3.connect(self.db_path) as conn:
+            urls_str = '|'.join(image_urls)
+            conn.execute(
+                "INSERT OR REPLACE INTO image_cache (keyword, image_urls, timestamp) VALUES (?, ?, ?)",
+                (keyword.lower(), urls_str, int(time.time()))
+            )
+            conn.commit()
+            logger.info(f"Cached {len(image_urls)} images for keyword: {keyword}")
+
+
 class ImageFetcher:
     """
-    Fetches images from Pexels API
+    Fetches images from multiple APIs with retry logic and fallback support
     
-    Note: Pexels API expects the API key directly in the Authorization header
-    (not as a Bearer token). Simply pass your API key as-is.
+    Supports:
+    - Pexels API (primary)
+    - Pixabay API (fallback)
+    - Async operations with aiohttp
+    - Retry logic with exponential backoff
+    - SQLite caching with 48h TTL
     """
     
-    # Configuration constants
     DEFAULT_TIMEOUT = 10  # seconds
     
-    def __init__(self, api_key: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT, validate: bool = False):
-        self.api_key = api_key or os.getenv("PEXELS_API_KEY")
-        self.base_url = "https://api.pexels.com/v1"
-        self.timeout = timeout
-        self.session = requests.Session()
-        self.validated = False
+    def __init__(
+        self,
+        pexels_key: Optional[str] = None,
+        pixabay_key: Optional[str] = None,
+        timeout: int = DEFAULT_TIMEOUT,
+        cache_enabled: bool = True
+    ):
+        self.pexels_key = pexels_key or os.getenv("PEXELS_API_KEY")
+        self.pixabay_key = pixabay_key or os.getenv("PIXABAY_API_KEY")
+        self.timeout = aiohttp.ClientTimeout(total=timeout)
+        self.cache = ImageCache() if cache_enabled else None
         
-        if self.api_key:
-            self.session.headers.update({
-                "Authorization": self.api_key
-            })
-            # Optionally validate API key on initialization
-            if validate:
-                self.validated = self._validate_api_key()
-    
-    def _validate_api_key(self) -> bool:
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=2, max=10),
+        retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError))
+    )
+    async def _fetch_from_pexels(self, query: str, max_images: int) -> List[str]:
         """
-        Validate Pexels API key by making a test request
-        
-        Returns:
-            True if API key is valid, False otherwise
-        """
-        try:
-            endpoint = f"{self.base_url}/search"
-            params = {
-                "query": "nature",
-                "per_page": 1
-            }
-            response = self.session.get(endpoint, params=params, timeout=self.timeout)
-            
-            if response.status_code == 401:
-                logger.error("Pexels API key is invalid or unauthorized")
-                return False
-            
-            response.raise_for_status()
-            logger.info("Pexels API key validated successfully")
-            return True
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error validating Pexels API key: {e}")
-            return False
-    
-    def validate_api_key(self) -> bool:
-        """
-        Validate Unsplash API key by making a test request
-        
-        Returns:
-            True if API key is valid and validation succeeded (200 OK)
-            False if no API key is configured, or if network/server errors occur
-            
-        Raises:
-            RuntimeError: If API key is invalid (401 Unauthorized)
-            
-        Note:
-            Returns False for transient errors to allow bot startup even if
-            Unsplash API is temporarily unavailable.
-        """
-        if not self.api_key:
-            logger.warning("Unsplash API key not configured - skipping validation")
-            return False
-        
-        try:
-            # Make a test request to validate the API key
-            # Using count=1 to minimize response size
-            endpoint = f"{self.base_url}/photos/random"
-            params = {"count": 1}
-            response = self.session.get(endpoint, params=params, timeout=self.timeout)
-        except requests.exceptions.RequestException as e:
-            # Network/request errors - log and return False (non-fatal)
-            logger.error(f"Error validating Unsplash API key: {e}")
-            return False
-        
-        if response.status_code == 200:
-            logger.info("Unsplash API key validated successfully")
-            return True
-        elif response.status_code == 401:
-            error_msg = "UNSPLASH_API_KEY is invalid (401 Unauthorized)"
-            logger.error(error_msg)
-            raise RuntimeError(error_msg)
-        else:
-            logger.warning(f"Unexpected status code during validation: {response.status_code}")
-            return False
-    
-    def search_images(self, query: str, max_images: int = 3) -> List[str]:
-        """
-        Search for images based on query
+        Fetch images from Pexels API with retry logic
         
         Args:
-            query: Search query (topic)
-            max_images: Maximum number of images to return (default 3)
+            query: Search query
+            max_images: Maximum number of images
             
         Returns:
             List of image URLs
         """
-        if not self.api_key:
+        if not self.pexels_key:
             logger.warning("Pexels API key not configured")
             return []
         
-        try:
-            # Search for photos
-            endpoint = f"{self.base_url}/search"
-            params = {
-                "query": query,
-                "per_page": max_images,
-                "orientation": "landscape"
-            }
-            
-            response = self.session.get(endpoint, params=params, timeout=self.timeout)
-            response.raise_for_status()
-            
-            data = response.json()
-            photos = data.get("photos", [])
-            
-            # Extract image URLs
-            image_urls = []
-            for photo in photos[:max_images]:
-                # Use 'large' size for good quality
-                url = photo.get("src", {}).get("large")
-                if url:
-                    image_urls.append(url)
-            
-            logger.info(f"Found {len(image_urls)} images for query: {query}")
-            return image_urls
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching images from Pexels: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"Unexpected error in image search: {e}")
-            return []
+        url = "https://api.pexels.com/v1/search"
+        headers = {"Authorization": self.pexels_key}
+        params = {
+            "query": query,
+            "per_page": max_images,
+            "orientation": "landscape"
+        }
+        
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            async with session.get(url, headers=headers, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
+                
+                photos = data.get("photos", [])
+                image_urls = [
+                    photo.get("src", {}).get("large")
+                    for photo in photos[:max_images]
+                    if photo.get("src", {}).get("large")
+                ]
+                
+                logger.info(f"Pexels: Found {len(image_urls)} images for '{query}'")
+                return image_urls
     
-    def get_random_images(self, count: int = 3) -> List[str]:
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=2, max=10),
+        retry=retry_if_exception_type((aiohttp.ClientError, asyncio.TimeoutError))
+    )
+    async def _fetch_from_pixabay(self, query: str, max_images: int) -> List[str]:
         """
-        Get random images (curated photos from Pexels)
+        Fetch images from Pixabay API with retry logic (fallback)
         
         Args:
-            count: Number of random images to fetch
+            query: Search query
+            max_images: Maximum number of images
             
         Returns:
             List of image URLs
         """
-        if not self.api_key:
-            logger.warning("Pexels API key not configured")
+        if not self.pixabay_key:
+            logger.warning("Pixabay API key not configured")
             return []
         
+        url = "https://pixabay.com/api/"
+        params = {
+            "key": self.pixabay_key,
+            "q": query,
+            "per_page": max_images,
+            "image_type": "photo",
+            "orientation": "horizontal"
+        }
+        
+        async with aiohttp.ClientSession(timeout=self.timeout) as session:
+            async with session.get(url, params=params) as response:
+                response.raise_for_status()
+                data = await response.json()
+                
+                hits = data.get("hits", [])
+                image_urls = [
+                    hit.get("largeImageURL")
+                    for hit in hits[:max_images]
+                    if hit.get("largeImageURL")
+                ]
+                
+                logger.info(f"Pixabay: Found {len(image_urls)} images for '{query}'")
+                return image_urls
+    
+    async def search_images(self, query: str, max_images: int = 3) -> List[str]:
+        """
+        Search for images with caching and fallback support
+        
+        Priority chain:
+        1. Check cache (48h TTL)
+        2. Try Pexels (3 retries with exponential backoff)
+        3. Fallback to Pixabay (3 retries)
+        4. Return empty list on complete failure
+        
+        Args:
+            query: Search query
+            max_images: Maximum number of images (default 3)
+            
+        Returns:
+            List of image URLs
+        """
+        # Check cache first
+        if self.cache:
+            cached = self.cache.get_cached_images(query)
+            if cached:
+                return cached[:max_images]
+        
+        image_urls = []
+        
+        # Try Pexels first
         try:
-            endpoint = f"{self.base_url}/curated"
-            params = {
-                "per_page": count
-            }
-            
-            response = self.session.get(endpoint, params=params, timeout=self.timeout)
-            response.raise_for_status()
-            
-            data = response.json()
-            photos = data.get("photos", [])
-            image_urls = []
-            
-            for photo in photos[:count]:
-                url = photo.get("src", {}).get("large")
-                if url:
-                    image_urls.append(url)
-            
-            logger.info(f"Fetched {len(image_urls)} random images")
-            return image_urls
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching random images: {e}")
-            return []
+            image_urls = await self._fetch_from_pexels(query, max_images)
+            if image_urls:
+                if self.cache:
+                    self.cache.cache_images(query, image_urls)
+                return image_urls
         except Exception as e:
-            logger.error(f"Unexpected error in get_random_images: {e}")
-            return []
+            logger.warning(f"Pexels fetch failed: {e}. Trying fallback...")
+        
+        # Fallback to Pixabay
+        try:
+            image_urls = await self._fetch_from_pixabay(query, max_images)
+            if image_urls:
+                if self.cache:
+                    self.cache.cache_images(query, image_urls)
+                return image_urls
+        except Exception as e:
+            logger.error(f"All image sources failed for '{query}': {e}")
+        
+        return []
+    
+    def search_images_sync(self, query: str, max_images: int = 3) -> List[str]:
+        """
+        Synchronous wrapper for search_images (for compatibility)
+        
+        Args:
+            query: Search query
+            max_images: Maximum number of images
+            
+        Returns:
+            List of image URLs
+        """
+        try:
+            # Try to get existing event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If loop is already running, create task
+                future = asyncio.ensure_future(self.search_images(query, max_images))
+                return []  # Can't wait in running loop, return empty
+            else:
+                # Run in existing loop
+                return loop.run_until_complete(self.search_images(query, max_images))
+        except RuntimeError:
+            # No event loop, create new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(self.search_images(query, max_images))
+            finally:
+                loop.close()
 
 
-# Global instance (validation disabled to avoid import-time network calls)
-image_fetcher = ImageFetcher(validate=False)
+# Global instance
+image_fetcher = ImageFetcher()

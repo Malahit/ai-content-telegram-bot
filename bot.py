@@ -331,7 +331,8 @@ async def generate_post(message: types.Message, state: FSMContext):
         # Fetch images for the post
         await message.answer("🖼️ Ищу подходящие изображения...")
         try:
-            image_urls = image_fetcher.search_images(topic, max_images=3)
+            # Use async search_images
+            image_urls = await image_fetcher.search_images(topic, max_images=3)
             
             if image_urls:
                 # Send text with images

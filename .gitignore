@@ -17,6 +17,14 @@ vectorstore/
 # Statistics data
 bot_statistics.json
 
+# Image cache database
+image_cache.db
+image_cache.db-journal
+
+# Wordstat cache database
+wordstat_cache.db
+wordstat_cache.db-journal
+
 # Secrets & Keys
 knowledge/*.pdf
 knowledge/*.key
@@ -61,3 +69,7 @@ mobile/.expo-shared/
 *.orig.*
 web-build/
 metro-config.js
+
+# Backup files
+*.backup
+*_old.py
