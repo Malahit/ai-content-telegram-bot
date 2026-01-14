@@ -38,7 +38,7 @@ except ImportError:
 
 try:
     from image_fetcher import image_fetcher
-    IMAGES_ENABLED = bool(config.config.get("PEXELS_API_KEY"))
+    IMAGES_ENABLED = bool(config.pexels_api_key)
     logger.info(f"✅ Image fetcher {'enabled' if IMAGES_ENABLED else 'available but no API key'}")
 except ImportError:
     IMAGES_ENABLED = False
@@ -46,10 +46,7 @@ except ImportError:
     logger.warning("⚠️ image_fetcher module not available")
 
 # Get admin user IDs from config
-ADMIN_USER_IDS = []
-admin_ids_str = config.config.get("ADMIN_USER_IDS", "")
-if admin_ids_str:
-    ADMIN_USER_IDS = [int(uid.strip()) for uid in admin_ids_str.split(",") if uid.strip().isdigit()]
+ADMIN_USER_IDS = config.admin_user_ids
 
 # Log startup information (without sensitive data)
 logger.info("=" * 60)

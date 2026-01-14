@@ -44,6 +44,13 @@ class Config:
         # RAG Configuration
         self.rag_search_k: int = int(os.getenv("RAG_SEARCH_K", "2"))
         self.rag_context_max_chars: int = int(os.getenv("RAG_CONTEXT_MAX_CHARS", "400"))
+        
+        # Image Configuration
+        self.pexels_api_key: Optional[str] = os.getenv("PEXELS_API_KEY") or None
+        
+        # Admin Configuration
+        admin_ids_str = os.getenv("ADMIN_USER_IDS", "")
+        self.admin_user_ids: list = [int(uid.strip()) for uid in admin_ids_str.split(",") if uid.strip().isdigit()] if admin_ids_str else []
     
     def _validate_config(self) -> None:
         """Validate required configuration values."""
@@ -70,11 +77,13 @@ class Config:
         return {
             "bot_token_configured": self.has_bot_token(),
             "api_key_configured": self.has_api_key(),
+            "pexels_api_key_configured": bool(self.pexels_api_key),
             "channel_id": self.channel_id,
             "api_model": self.api_model,
             "autopost_interval_hours": self.autopost_interval_hours,
             "max_tokens": self.max_tokens,
-            "temperature": self.temperature
+            "temperature": self.temperature,
+            "admin_users_count": len(self.admin_user_ids)
         }
 
 
