@@ -248,36 +248,6 @@ class ImageFetcher:
             logger.error(f"All image sources failed for '{query}': {e}")
         
         return []
-    
-    def search_images_sync(self, query: str, max_images: int = 3) -> List[str]:
-        """
-        Synchronous wrapper for search_images (for compatibility)
-        
-        Args:
-            query: Search query
-            max_images: Maximum number of images
-            
-        Returns:
-            List of image URLs
-        """
-        try:
-            # Try to get existing event loop
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # If loop is already running, create task
-                future = asyncio.ensure_future(self.search_images(query, max_images))
-                return []  # Can't wait in running loop, return empty
-            else:
-                # Run in existing loop
-                return loop.run_until_complete(self.search_images(query, max_images))
-        except RuntimeError:
-            # No event loop, create new one
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                return loop.run_until_complete(self.search_images(query, max_images))
-            finally:
-                loop.close()
 
 
 # Global instance
