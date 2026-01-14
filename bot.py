@@ -7,6 +7,7 @@ Supports optional RAG (Retrieval-Augmented Generation), translation, and image g
 
 import asyncio
 import random
+import re
 from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, types
@@ -101,6 +102,48 @@ def get_keyboard(user_id: int) -> ReplyKeyboardMarkup:
     return kb
 
 
+def sanitize_content(content: str) -> str:
+    """
+    Clean generated content by removing citation artifacts and URLs.
+    
+    Removes:
+    - Citation numbers in parentheses like (1), (123)
+    - Citation numbers in brackets like [1], [12]
+    - Markdown links [text](url) - keeps text, removes URL
+    - Standalone URLs
+    - Excessive whitespace from removals
+    
+    Args:
+        content: Raw content from API
+        
+    Returns:
+        Cleaned content without citations and URLs
+    """
+    # Remove citation numbers in parentheses: (1), (123), etc.
+    content = re.sub(r'\(\d+\)', '', content)
+    
+    # Remove citation numbers in brackets: [1], [12], etc.
+    content = re.sub(r'\[\d+\]', '', content)
+    
+    # Remove markdown links [text](url) - keep text, remove URL
+    content = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', content)
+    
+    # Remove standalone URLs
+    content = re.sub(r'https?://[^\s]+', '', content)
+    
+    # Remove standalone brackets that might be left
+    content = re.sub(r'\[\]', '', content)
+    
+    # Clean up excessive whitespace
+    content = re.sub(r'\s+', ' ', content)
+    content = re.sub(r'\s+([.,!?])', r'\1', content)
+    
+    # Clean up multiple line breaks
+    content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+    
+    return content.strip()
+
+
 async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
     """
     Generate content for a given topic using Perplexity API.
@@ -127,13 +170,20 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
         # Generate content using API
         content = api_client.generate_content(topic, rag_context, max_tokens)
         
+        # Sanitize content to remove citation artifacts and URLs
+        content = sanitize_content(content)
+        logger.debug(f"Content sanitized, length: {len(content)}")
+        
         # Apply translation if enabled
         if translation_service.is_enabled():
             translated, lang = await translation_service.detect_and_translate(content)
             content = translation_service.add_language_marker(translated, lang)
         
-        # Add RAG info if available
-        final_content = f"{content}{rag_info}"
+        # Add RAG info if available (only if there is RAG info to add)
+        if rag_info:
+            final_content = f"{content}{rag_info}"
+        else:
+            final_content = content
         
         logger.info("Content generation completed successfully")
         return final_content
@@ -281,7 +331,8 @@ async def generate_post(message: types.Message, state: FSMContext):
         # Fetch images for the post
         await message.answer("🖼️ Ищу подходящие изображения...")
         try:
-            image_urls = image_fetcher.search_images(topic, max_images=3)
+            # Use async search_images
+            image_urls = await image_fetcher.search_images(topic, max_images=3)
             
             if image_urls:
                 # Send text with images
