@@ -1,174 +1,214 @@
 #!/usr/bin/env python3
 """
-Unit tests for image_fetcher module using mocks.
-Tests the Pexels API integration without requiring internet access.
+Unit tests for image_fetcher module.
+Tests async image fetching with retry, fallback, and caching functionality.
 """
-import unittest
-from unittest.mock import Mock, patch
+import asyncio
+import os
 import logging
-from image_fetcher import ImageFetcher
+from image_fetcher import ImageFetcher, ImageCache
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
-class TestImageFetcher(unittest.TestCase):
-    """Test cases for ImageFetcher class"""
+async def test_cache_initialization():
+    """Test that cache database is properly initialized"""
+    print("\n🧪 Test 1: Cache Initialization")
     
-    def setUp(self):
-        """Set up test fixtures"""
-        self.api_key = "test_api_key_12345"
-        self.fetcher = ImageFetcher(api_key=self.api_key)
+    test_db = "test_image_cache.db"
+    if os.path.exists(test_db):
+        os.remove(test_db)
     
-    def test_init_with_api_key(self):
-        """Test ImageFetcher initialization with API key"""
-        self.assertEqual(self.fetcher.api_key, self.api_key)
-        self.assertEqual(self.fetcher.base_url, "https://api.pexels.com/v1")
-        self.assertEqual(self.fetcher.session.headers.get("Authorization"), self.api_key)
+    cache = ImageCache(db_path=test_db, ttl_hours=48)
     
-    def test_init_without_api_key(self):
-        """Test ImageFetcher initialization without API key"""
-        fetcher = ImageFetcher(api_key=None)
-        self.assertIsNone(fetcher.api_key)
+    # Verify database file was created
+    assert os.path.exists(test_db), "Cache database should be created"
+    print("✅ Cache initialized successfully")
     
-    @patch('image_fetcher.requests.Session.get')
-    def test_search_images_success(self, mock_get):
-        """Test successful image search"""
-        # Mock successful API response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "photos": [
-                {"src": {"large": "https://example.com/image1.jpg"}},
-                {"src": {"large": "https://example.com/image2.jpg"}},
-                {"src": {"large": "https://example.com/image3.jpg"}}
-            ]
-        }
-        mock_get.return_value = mock_response
-        
-        # Test search
-        results = self.fetcher.search_images("fitness", max_images=3)
-        
-        # Assertions
-        self.assertEqual(len(results), 3)
-        self.assertEqual(results[0], "https://example.com/image1.jpg")
-        self.assertEqual(results[1], "https://example.com/image2.jpg")
-        self.assertEqual(results[2], "https://example.com/image3.jpg")
-        
-        # Verify API was called correctly
-        mock_get.assert_called_once()
-        call_args = mock_get.call_args
-        self.assertIn("query", call_args.kwargs["params"])
-        self.assertEqual(call_args.kwargs["params"]["query"], "fitness")
+    # Cleanup
+    os.remove(test_db)
+
+
+async def test_cache_storage_and_retrieval():
+    """Test caching images and retrieving them"""
+    print("\n🧪 Test 2: Cache Storage and Retrieval")
     
-    @patch('image_fetcher.requests.Session.get')
-    def test_search_images_no_api_key(self, mock_get):
-        """Test image search without API key"""
-        fetcher = ImageFetcher(api_key=None)
-        results = fetcher.search_images("fitness")
-        
-        # Should return empty list without making API call
-        self.assertEqual(results, [])
-        mock_get.assert_not_called()
+    test_db = "test_image_cache.db"
+    if os.path.exists(test_db):
+        os.remove(test_db)
     
-    @patch('image_fetcher.requests.Session.get')
-    def test_search_images_http_error(self, mock_get):
-        """Test image search with HTTP error"""
-        # Mock HTTP error response
-        mock_response = Mock()
-        mock_response.status_code = 401
-        mock_response.text = "Unauthorized"
-        mock_response.raise_for_status.side_effect = Exception("HTTP 401")
-        mock_get.return_value = mock_response
-        
-        # Test search
-        results = self.fetcher.search_images("fitness")
-        
-        # Should return empty list on error
-        self.assertEqual(results, [])
+    cache = ImageCache(db_path=test_db, ttl_hours=48)
     
-    @patch('image_fetcher.requests.Session.get')
-    def test_search_images_empty_results(self, mock_get):
-        """Test image search with no results"""
-        # Mock empty response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"photos": []}
-        mock_get.return_value = mock_response
-        
-        # Test search
-        results = self.fetcher.search_images("nonexistent_topic")
-        
-        # Should return empty list
-        self.assertEqual(results, [])
+    keyword = "test_fitness"
+    image_urls = [
+        "https://example.com/image1.jpg",
+        "https://example.com/image2.jpg",
+        "https://example.com/image3.jpg"
+    ]
     
-    @patch('image_fetcher.requests.Session.get')
-    def test_get_random_images_success(self, mock_get):
-        """Test successful random image fetch"""
-        # Mock successful API response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "photos": [
-                {"src": {"large": "https://example.com/random1.jpg"}},
-                {"src": {"large": "https://example.com/random2.jpg"}}
-            ]
-        }
-        mock_get.return_value = mock_response
-        
-        # Test fetch
-        results = self.fetcher.get_random_images(count=2)
-        
-        # Assertions
-        self.assertEqual(len(results), 2)
-        self.assertEqual(results[0], "https://example.com/random1.jpg")
-        self.assertEqual(results[1], "https://example.com/random2.jpg")
+    # Cache images
+    cache.cache_images(keyword, image_urls)
+    print(f"   Cached {len(image_urls)} images")
     
-    @patch('image_fetcher.requests.Session.get')
-    def test_get_random_images_no_api_key(self, mock_get):
-        """Test random image fetch without API key"""
-        fetcher = ImageFetcher(api_key=None)
-        results = fetcher.get_random_images()
-        
-        # Should return empty list without making API call
-        self.assertEqual(results, [])
-        mock_get.assert_not_called()
+    # Retrieve from cache
+    cached = cache.get_cached_images(keyword)
+    print(f"   Retrieved {len(cached)} images from cache")
     
-    @patch('image_fetcher.requests.Session.get')
-    def test_validate_api_key_success(self, mock_get):
-        """Test successful API key validation"""
-        # Mock successful validation response
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {"photos": [{"src": {"large": "test.jpg"}}]}
-        mock_get.return_value = mock_response
-        
-        # Test validation
-        fetcher = ImageFetcher(api_key=self.api_key, validate=True)
-        
-        # Assertions
-        self.assertTrue(fetcher.validated)
-        mock_get.assert_called_once()
+    assert len(cached) == len(image_urls), f"Expected {len(image_urls)} images, got {len(cached)}"
+    assert set(cached) == set(image_urls), "Cached images should match original"
     
-    @patch('image_fetcher.requests.Session.get')
-    def test_validate_api_key_failure(self, mock_get):
-        """Test failed API key validation"""
-        # Mock 401 unauthorized response
-        mock_response = Mock()
-        mock_response.status_code = 401
-        mock_get.return_value = mock_response
-        
-        # Test validation
-        fetcher = ImageFetcher(api_key=self.api_key, validate=True)
-        
-        # Assertions
-        self.assertFalse(fetcher.validated)
+    print("✅ Cache storage and retrieval works correctly")
+    
+    # Cleanup
+    os.remove(test_db)
+
+
+async def test_cache_miss():
+    """Test cache miss for non-existent keyword"""
+    print("\n🧪 Test 3: Cache Miss")
+    
+    test_db = "test_image_cache.db"
+    if os.path.exists(test_db):
+        os.remove(test_db)
+    
+    cache = ImageCache(db_path=test_db, ttl_hours=48)
+    
+    # Try to get images for non-existent keyword
+    cached = cache.get_cached_images("nonexistent_keyword")
+    
+    assert cached is None, "Should return None for cache miss"
+    print("✅ Cache miss handled correctly")
+    
+    # Cleanup
+    if os.path.exists(test_db):
+        os.remove(test_db)
+
+
+async def test_fetcher_initialization():
+    """Test ImageFetcher initialization with API keys"""
+    print("\n🧪 Test 4: ImageFetcher Initialization")
+    
+    # Test with Pexels key
+    fetcher = ImageFetcher(pexels_key="test_pexels_key", cache_enabled=False)
+    assert fetcher.pexels_key == "test_pexels_key"
+    
+    # Test with Pixabay key
+    fetcher = ImageFetcher(pixabay_key="test_pixabay_key", cache_enabled=False)
+    assert fetcher.pixabay_key == "test_pixabay_key"
+    
+    # Test with both keys
+    fetcher = ImageFetcher(
+        pexels_key="test_pexels_key",
+        pixabay_key="test_pixabay_key",
+        cache_enabled=False
+    )
+    assert fetcher.pexels_key == "test_pexels_key"
+    assert fetcher.pixabay_key == "test_pixabay_key"
+    
+    print("✅ ImageFetcher initialized correctly")
+
+
+async def test_fallback_to_pixabay():
+    """Test fallback from Pexels to Pixabay"""
+    print("\n🧪 Test 5: Fallback to Pixabay")
+    
+    fetcher = ImageFetcher(
+        pexels_key="fake_pexels_key",
+        pixabay_key="fake_pixabay_key",
+        cache_enabled=False
+    )
+    
+    # Mock Pexels to fail and Pixabay to succeed
+    async def mock_pexels_fail(*args, **kwargs):
+        raise Exception("Pexels API error")
+    
+    async def mock_pixabay_success(*args, **kwargs):
+        return ["https://pixabay.com/photo1.jpg", "https://pixabay.com/photo2.jpg"]
+    
+    fetcher._fetch_from_pexels = mock_pexels_fail
+    fetcher._fetch_from_pixabay = mock_pixabay_success
+    
+    images = await fetcher.search_images("test", max_images=3)
+    
+    assert len(images) > 0, "Should get images from Pixabay fallback"
+    assert "pixabay" in images[0], "Images should be from Pixabay"
+    print(f"✅ Fallback to Pixabay successful: {len(images)} images")
+
+
+async def test_all_apis_fail():
+    """Test behavior when all APIs fail"""
+    print("\n🧪 Test 6: All APIs Fail")
+    
+    fetcher = ImageFetcher(
+        pexels_key="fake_pexels_key",
+        pixabay_key="fake_pixabay_key",
+        cache_enabled=False
+    )
+    
+    # Mock all APIs to fail
+    async def mock_fail(*args, **kwargs):
+        raise Exception("API error")
+    
+    fetcher._fetch_from_pexels = mock_fail
+    fetcher._fetch_from_pixabay = mock_fail
+    
+    images = await fetcher.search_images("test", max_images=3)
+    
+    assert len(images) == 0, "Should return empty list when all APIs fail"
+    print("✅ All APIs fail handled correctly")
+
+
+async def test_no_api_keys():
+    """Test behavior when no API keys are configured"""
+    print("\n🧪 Test 7: No API Keys")
+    
+    fetcher = ImageFetcher(cache_enabled=False)
+    
+    images = await fetcher.search_images("test", max_images=3)
+    
+    assert len(images) == 0, "Should return empty list when no API keys configured"
+    print("✅ No API keys handled correctly")
+
+
+async def run_all_tests():
+    """Run all async tests"""
+    print("=" * 60)
+    print("Running Image Fetcher Tests")
+    print("=" * 60)
+    
+    tests = [
+        test_cache_initialization,
+        test_cache_storage_and_retrieval,
+        test_cache_miss,
+        test_fetcher_initialization,
+        test_fallback_to_pixabay,
+        test_all_apis_fail,
+        test_no_api_keys,
+    ]
+    
+    passed = 0
+    failed = 0
+    
+    for test in tests:
+        try:
+            await test()
+            passed += 1
+        except AssertionError as e:
+            print(f"❌ {test.__name__} failed: {e}")
+            failed += 1
+        except Exception as e:
+            print(f"❌ {test.__name__} error: {e}")
+            failed += 1
+    
+    print("\n" + "=" * 60)
+    print(f"Test Results: {passed} passed, {failed} failed")
+    print("=" * 60)
+    
+    return failed == 0
 
 
 if __name__ == '__main__':
-    # Run tests
-    suite = unittest.TestLoader().loadTestsFromTestCase(TestImageFetcher)
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    
-    # Exit with appropriate code
-    exit(0 if result.wasSuccessful() else 1)
+    # Run async tests
+    success = asyncio.run(run_all_tests())
+    exit(0 if success else 1)
