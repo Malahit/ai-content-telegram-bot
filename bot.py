@@ -245,13 +245,13 @@ async def process_wordstat_keyword(message: types.Message, keyword: str, state: 
             [
                 InlineKeyboardButton(
                     text="✍️ Создать SEO пост",
-                    callback_data=f"wordstat_seo_{keyword}"
+                    callback_data="wordstat_seo"
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="🔄 Обновить данные",
-                    callback_data=f"wordstat_retry_{keyword}"
+                    callback_data="wordstat_retry"
                 )
             ]
         ])
