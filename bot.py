@@ -113,6 +113,10 @@ def sanitize_content(content: str) -> str:
     - Standalone URLs
     - Excessive whitespace from removals
     
+    Preserves:
+    - Single line breaks
+    - Paragraph structure (double line breaks)
+    
     Args:
         content: Raw content from API
         
@@ -134,12 +138,12 @@ def sanitize_content(content: str) -> str:
     # Remove standalone brackets that might be left
     content = re.sub(r'\[\]', '', content)
     
-    # Clean up excessive whitespace
-    content = re.sub(r'\s+', ' ', content)
-    content = re.sub(r'\s+([.,!?])', r'\1', content)
-    
-    # Clean up multiple line breaks
+    # Clean up multiple line breaks (must happen before general whitespace cleanup)
     content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+    
+    # Clean up excessive whitespace (but preserve newlines)
+    content = re.sub(r'[^\S\n]+', ' ', content)
+    content = re.sub(r'\s+([.,!?])', r'\1', content)
     
     return content.strip()
 
