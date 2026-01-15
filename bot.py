@@ -403,14 +403,9 @@ async def on_startup():
     
     Configures and starts the autoposter scheduler.
     """
-    # Validate image API key if configured
+    # Image fetcher is ready (API keys loaded during initialization)
     if IMAGES_ENABLED and image_fetcher:
-        logger.info("Validating image API key...")
-        try:
-            image_fetcher.validate_api_key()
-        except RuntimeError as e:
-            logger.error(f"Image API key validation error: {e}")
-            # Don't raise - allow bot to start without images
+        logger.info("Image fetcher ready with Pexels/Pixabay APIs")
     
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
