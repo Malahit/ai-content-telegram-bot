@@ -5,6 +5,7 @@ Tests async image fetching with retry, fallback, and caching functionality.
 """
 import asyncio
 import os
+import tempfile
 import logging
 from image_fetcher import ImageFetcher, ImageCache
 
@@ -12,77 +13,86 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def get_test_db_path():
+    """Get a temporary test database path"""
+    fd, path = tempfile.mkstemp(suffix=".db", prefix="test_cache_")
+    os.close(fd)  # Close the file descriptor, we just need the path
+    return path
+
+
+def cleanup_test_db(db_path):
+    """Clean up test database file"""
+    try:
+        if os.path.exists(db_path):
+            os.remove(db_path)
+    except Exception as e:
+        logger.warning(f"Failed to cleanup test db {db_path}: {e}")
+
+
 async def test_cache_initialization():
     """Test that cache database is properly initialized"""
     print("\n🧪 Test 1: Cache Initialization")
     
-    test_db = "test_image_cache.db"
-    if os.path.exists(test_db):
-        os.remove(test_db)
+    test_db = get_test_db_path()
     
-    cache = ImageCache(db_path=test_db, ttl_hours=48)
-    
-    # Verify database file was created
-    assert os.path.exists(test_db), "Cache database should be created"
-    print("✅ Cache initialized successfully")
-    
-    # Cleanup
-    os.remove(test_db)
+    try:
+        cache = ImageCache(db_path=test_db, ttl_hours=48)
+        
+        # Verify database file was created
+        assert os.path.exists(test_db), "Cache database should be created"
+        print("✅ Cache initialized successfully")
+    finally:
+        cleanup_test_db(test_db)
 
 
 async def test_cache_storage_and_retrieval():
     """Test caching images and retrieving them"""
     print("\n🧪 Test 2: Cache Storage and Retrieval")
     
-    test_db = "test_image_cache.db"
-    if os.path.exists(test_db):
-        os.remove(test_db)
+    test_db = get_test_db_path()
     
-    cache = ImageCache(db_path=test_db, ttl_hours=48)
-    
-    keyword = "test_fitness"
-    image_urls = [
-        "https://example.com/image1.jpg",
-        "https://example.com/image2.jpg",
-        "https://example.com/image3.jpg"
-    ]
-    
-    # Cache images
-    cache.cache_images(keyword, image_urls)
-    print(f"   Cached {len(image_urls)} images")
-    
-    # Retrieve from cache
-    cached = cache.get_cached_images(keyword)
-    print(f"   Retrieved {len(cached)} images from cache")
-    
-    assert len(cached) == len(image_urls), f"Expected {len(image_urls)} images, got {len(cached)}"
-    assert set(cached) == set(image_urls), "Cached images should match original"
-    
-    print("✅ Cache storage and retrieval works correctly")
-    
-    # Cleanup
-    os.remove(test_db)
+    try:
+        cache = ImageCache(db_path=test_db, ttl_hours=48)
+        
+        keyword = "test_fitness"
+        image_urls = [
+            "https://example.com/image1.jpg",
+            "https://example.com/image2.jpg",
+            "https://example.com/image3.jpg"
+        ]
+        
+        # Cache images
+        cache.cache_images(keyword, image_urls)
+        print(f"   Cached {len(image_urls)} images")
+        
+        # Retrieve from cache
+        cached = cache.get_cached_images(keyword)
+        print(f"   Retrieved {len(cached)} images from cache")
+        
+        assert len(cached) == len(image_urls), f"Expected {len(image_urls)} images, got {len(cached)}"
+        assert set(cached) == set(image_urls), "Cached images should match original"
+        
+        print("✅ Cache storage and retrieval works correctly")
+    finally:
+        cleanup_test_db(test_db)
 
 
 async def test_cache_miss():
     """Test cache miss for non-existent keyword"""
     print("\n🧪 Test 3: Cache Miss")
     
-    test_db = "test_image_cache.db"
-    if os.path.exists(test_db):
-        os.remove(test_db)
+    test_db = get_test_db_path()
     
-    cache = ImageCache(db_path=test_db, ttl_hours=48)
-    
-    # Try to get images for non-existent keyword
-    cached = cache.get_cached_images("nonexistent_keyword")
-    
-    assert cached is None, "Should return None for cache miss"
-    print("✅ Cache miss handled correctly")
-    
-    # Cleanup
-    if os.path.exists(test_db):
-        os.remove(test_db)
+    try:
+        cache = ImageCache(db_path=test_db, ttl_hours=48)
+        
+        # Try to get images for non-existent keyword
+        cached = cache.get_cached_images("nonexistent_keyword")
+        
+        assert cached is None, "Should return None for cache miss"
+        print("✅ Cache miss handled correctly")
+    finally:
+        cleanup_test_db(test_db)
 
 
 async def test_fetcher_initialization():
