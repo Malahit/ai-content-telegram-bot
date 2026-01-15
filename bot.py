@@ -38,9 +38,18 @@ except ImportError:
     logger.warning("⚠️ bot_statistics module not available")
 
 try:
-    from image_fetcher import image_fetcher
-    IMAGES_ENABLED = bool(config.pexels_api_key)
-    logger.info(f"✅ Image fetcher {'enabled' if IMAGES_ENABLED else 'available but no API key'}")
+    from image_fetcher import ImageFetcher
+    # Initialize with both API keys
+    image_fetcher = ImageFetcher(
+        pexels_key=config.pexels_api_key,
+        pixabay_key=config.pixabay_api_key
+    )
+    # Images are enabled if at least one API key is configured
+    IMAGES_ENABLED = bool(config.pexels_api_key or config.pixabay_api_key)
+    if IMAGES_ENABLED:
+        logger.info(f"✅ Image fetcher enabled (Pexels: {bool(config.pexels_api_key)}, Pixabay: {bool(config.pixabay_api_key)})")
+    else:
+        logger.warning("⚠️ Image fetcher available but no API keys configured")
 except ImportError:
     IMAGES_ENABLED = False
     image_fetcher = None
@@ -331,8 +340,8 @@ async def generate_post(message: types.Message, state: FSMContext):
         # Fetch images for the post
         await message.answer("🖼️ Ищу подходящие изображения...")
         try:
-            # Use async search_images
-            image_urls = await image_fetcher.search_images(topic, max_images=3)
+            # Use async search_images - returns (urls, error_msg)
+            image_urls, error_msg = await image_fetcher.search_images(topic, max_images=3)
             
             if image_urls:
                 # Send text with images
@@ -349,15 +358,17 @@ async def generate_post(message: types.Message, state: FSMContext):
                     await message.answer_media_group(media)
                     logger.info(f"Post with {len(image_urls)} images sent to user {user_id}")
                 except Exception as e:
-                    logger.error(f"Error sending images: {e}")
+                    logger.error(f"Error sending media group: {e}", exc_info=True)
                     # Fallback to text-only
-                    await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка загрузки изображений")
+                    await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка отправки изображений: {str(e)}")
             else:
-                # No images found, send text only
-                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Изображения не найдены")
+                # No images found, send text only with error details
+                error_detail = f": {error_msg}" if error_msg else ""
+                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Изображения не найдены{error_detail}")
+                logger.warning(f"No images found for '{topic}': {error_msg}")
         except Exception as e:
-            logger.error(f"Error fetching images: {e}")
-            await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка поиска изображений")
+            logger.error(f"Error fetching images: {e}", exc_info=True)
+            await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка поиска изображений: {str(e)}")
     else:
         # Text-only post
         await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
@@ -381,18 +392,47 @@ async def auto_post():
     Automated posting function.
     
     Selects a random topic from predefined list and posts generated
-    content to the configured channel.
+    content to the configured channel. Randomly decides whether to include images.
     """
     topic = random.choice(AUTOPOST_TOPICS)
-    logger.info(f"🕒 Автопост: {topic}")
+    # Randomly decide if this autopost should include images (50% chance if enabled)
+    include_images = IMAGES_ENABLED and random.choice([True, False])
+    
+    logger.info(f"🕒 Автопост: {topic} (with images: {include_images})")
     
     try:
         content = await generate_content(topic)
+        post_prefix = f"<b>🤖 Автопост {random.randint(1,999)}:</b>\n\n"
+        
+        if include_images:
+            # Try to fetch and send with images
+            try:
+                image_urls, error_msg = await image_fetcher.search_images(topic, max_images=3)
+                
+                if image_urls:
+                    # Send as media group with caption
+                    media = []
+                    for i, url in enumerate(image_urls):
+                        if i == 0:
+                            # Add caption to first image
+                            media.append(InputMediaPhoto(media=url, caption=f"{post_prefix}{content}"))
+                        else:
+                            media.append(InputMediaPhoto(media=url))
+                    
+                    await bot.send_media_group(config.channel_id, media)
+                    logger.info(f"✅ Автопост с {len(image_urls)} изображениями опубликован: {topic} → {config.channel_id}")
+                    return
+                else:
+                    logger.warning(f"No images found for autopost '{topic}': {error_msg}. Falling back to text-only.")
+            except Exception as e:
+                logger.error(f"Error fetching/sending images for autopost: {e}. Falling back to text-only.", exc_info=True)
+        
+        # Send text-only (either by choice or fallback)
         await bot.send_message(
             config.channel_id,
-            f"<b>🤖 Автопост {random.randint(1,999)}:</b>\n\n{content}"
+            f"{post_prefix}{content}"
         )
-        logger.info(f"✅ Автопост успешно опубликован: {topic} → {config.channel_id}")
+        logger.info(f"✅ Автопост (текст) успешно опубликован: {topic} → {config.channel_id}")
     except Exception as e:
         logger.error(f"❌ Ошибка автопоста: {e}", exc_info=True)
 

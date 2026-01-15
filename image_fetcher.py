@@ -130,10 +130,14 @@ class ImageFetcher:
             
         Returns:
             List of image URLs
+            
+        Raises:
+            ValueError: If API key is not configured
+            aiohttp.ClientError: If API request fails
         """
         if not self.pexels_key:
             logger.warning("Pexels API key not configured")
-            return []
+            raise ValueError("Pexels API key not configured")
         
         url = "https://api.pexels.com/v1/search"
         headers = {"Authorization": self.pexels_key}
@@ -145,10 +149,18 @@ class ImageFetcher:
         
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
             async with session.get(url, headers=headers, params=params) as response:
+                if response.status == 401:
+                    logger.error("Pexels API: Invalid API key (401 Unauthorized)")
+                    raise ValueError("Invalid Pexels API key")
+                
                 response.raise_for_status()
                 data = await response.json()
                 
                 photos = data.get("photos", [])
+                if not photos:
+                    logger.info(f"Pexels: No images found for '{query}'")
+                    return []
+                
                 image_urls = [
                     photo.get("src", {}).get("large")
                     for photo in photos[:max_images]
@@ -173,10 +185,14 @@ class ImageFetcher:
             
         Returns:
             List of image URLs
+            
+        Raises:
+            ValueError: If API key is not configured
+            aiohttp.ClientError: If API request fails
         """
         if not self.pixabay_key:
             logger.warning("Pixabay API key not configured")
-            return []
+            raise ValueError("Pixabay API key not configured")
         
         url = "https://pixabay.com/api/"
         params = {
@@ -189,10 +205,18 @@ class ImageFetcher:
         
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
             async with session.get(url, params=params) as response:
+                if response.status == 401:
+                    logger.error("Pixabay API: Invalid API key (401 Unauthorized)")
+                    raise ValueError("Invalid Pixabay API key")
+                
                 response.raise_for_status()
                 data = await response.json()
                 
                 hits = data.get("hits", [])
+                if not hits:
+                    logger.info(f"Pixabay: No images found for '{query}'")
+                    return []
+                
                 image_urls = [
                     hit.get("largeImageURL")
                     for hit in hits[:max_images]
@@ -202,7 +226,7 @@ class ImageFetcher:
                 logger.info(f"Pixabay: Found {len(image_urls)} images for '{query}'")
                 return image_urls
     
-    async def search_images(self, query: str, max_images: int = 3) -> List[str]:
+    async def search_images(self, query: str, max_images: int = 3) -> Tuple[List[str], Optional[str]]:
         """
         Search for images with caching and fallback support
         
@@ -210,22 +234,23 @@ class ImageFetcher:
         1. Check cache (48h TTL)
         2. Try Pexels (3 retries with exponential backoff)
         3. Fallback to Pixabay (3 retries)
-        4. Return empty list on complete failure
+        4. Return empty list with error message on complete failure
         
         Args:
             query: Search query
             max_images: Maximum number of images (default 3)
             
         Returns:
-            List of image URLs
+            Tuple of (list of image URLs, optional error message)
         """
         # Check cache first
         if self.cache:
             cached = self.cache.get_cached_images(query)
             if cached:
-                return cached[:max_images]
+                return cached[:max_images], None
         
         image_urls = []
+        error_msg = None
         
         # Try Pexels first
         try:
@@ -233,8 +258,15 @@ class ImageFetcher:
             if image_urls:
                 if self.cache:
                     self.cache.cache_images(query, image_urls)
-                return image_urls
+                return image_urls, None
+            else:
+                error_msg = "No results from Pexels API"
+        except ValueError as e:
+            # API key not configured or invalid
+            error_msg = str(e)
+            logger.warning(f"Pexels fetch failed: {e}. Trying fallback...")
         except Exception as e:
+            error_msg = f"Pexels API error: {type(e).__name__}"
             logger.warning(f"Pexels fetch failed: {e}. Trying fallback...")
         
         # Fallback to Pixabay
@@ -243,11 +275,18 @@ class ImageFetcher:
             if image_urls:
                 if self.cache:
                     self.cache.cache_images(query, image_urls)
-                return image_urls
+                return image_urls, None
+            else:
+                error_msg = f"{error_msg}; No results from Pixabay API" if error_msg else "No results from Pixabay API"
+        except ValueError as e:
+            # API key not configured or invalid
+            error_msg = f"{error_msg}; {str(e)}" if error_msg else str(e)
+            logger.error(f"All image sources failed for '{query}': {error_msg}")
         except Exception as e:
+            error_msg = f"{error_msg}; Pixabay API error: {type(e).__name__}" if error_msg else f"Pixabay API error: {type(e).__name__}"
             logger.error(f"All image sources failed for '{query}': {e}")
         
-        return []
+        return [], error_msg
 
 
 # Global instance
