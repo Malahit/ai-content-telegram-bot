@@ -47,6 +47,7 @@ class Config:
         
         # Image Configuration
         self.pexels_api_key: Optional[str] = os.getenv("PEXELS_API_KEY") or None
+        self.pixabay_api_key: Optional[str] = os.getenv("PIXABAY_API_KEY") or None
         
         # Admin Configuration
         admin_ids_str = os.getenv("ADMIN_USER_IDS", "")
@@ -78,6 +79,7 @@ class Config:
             "bot_token_configured": self.has_bot_token(),
             "api_key_configured": self.has_api_key(),
             "pexels_api_key_configured": bool(self.pexels_api_key),
+            "pixabay_api_key_configured": bool(self.pixabay_api_key),
             "channel_id": self.channel_id,
             "api_model": self.api_model,
             "autopost_interval_hours": self.autopost_interval_hours,

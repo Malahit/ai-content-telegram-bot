@@ -139,10 +139,11 @@ async def test_fallback_to_pixabay():
     fetcher._fetch_from_pexels = mock_pexels_fail
     fetcher._fetch_from_pixabay = mock_pixabay_success
     
-    images = await fetcher.search_images("test", max_images=3)
+    images, error_msg = await fetcher.search_images("test", max_images=3)
     
     assert len(images) > 0, "Should get images from Pixabay fallback"
     assert "pixabay" in images[0], "Images should be from Pixabay"
+    assert error_msg is None, "Should not have error message on success"
     print(f"✅ Fallback to Pixabay successful: {len(images)} images")
 
 
@@ -163,10 +164,11 @@ async def test_all_apis_fail():
     fetcher._fetch_from_pexels = mock_fail
     fetcher._fetch_from_pixabay = mock_fail
     
-    images = await fetcher.search_images("test", max_images=3)
+    images, error_msg = await fetcher.search_images("test", max_images=3)
     
     assert len(images) == 0, "Should return empty list when all APIs fail"
-    print("✅ All APIs fail handled correctly")
+    assert error_msg is not None, "Should have error message when all APIs fail"
+    print(f"✅ All APIs fail handled correctly (error: {error_msg})")
 
 
 async def test_no_api_keys():
@@ -175,10 +177,12 @@ async def test_no_api_keys():
     
     fetcher = ImageFetcher(cache_enabled=False)
     
-    images = await fetcher.search_images("test", max_images=3)
+    images, error_msg = await fetcher.search_images("test", max_images=3)
     
     assert len(images) == 0, "Should return empty list when no API keys configured"
-    print("✅ No API keys handled correctly")
+    assert error_msg is not None, "Should have error message when no API keys"
+    assert "not configured" in error_msg.lower(), "Error message should mention API key issue"
+    print(f"✅ No API keys handled correctly (error: {error_msg})")
 
 
 async def run_all_tests():
