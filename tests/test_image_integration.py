@@ -12,6 +12,7 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from image_fetcher import ImageFetcher
+import aiohttp
 
 
 class TestImagePostWorkflows(unittest.TestCase):
@@ -172,6 +173,126 @@ class TestImagePostWorkflows(unittest.TestCase):
             # Should not receive more than requested
             self.assertLessEqual(len(images), 5)  # API might return all
             self.assertIsNone(error)
+        
+        asyncio.run(run_test())
+    
+    def test_rate_limit_error_handling_pexels(self):
+        """Test that rate limit errors are properly detected and reported"""
+        async def run_test():
+            fetcher = ImageFetcher(
+                pexels_key="test_key",
+                cache_enabled=False
+            )
+            
+            # Mock rate limit error
+            async def mock_rate_limit(*args, **kwargs):
+                raise aiohttp.ClientError("Rate limit exceeded for Pexels API")
+            
+            fetcher._fetch_from_pexels = mock_rate_limit
+            
+            images, error = await fetcher.search_images("test", max_images=3)
+            
+            self.assertEqual(len(images), 0)
+            self.assertIsNotNone(error)
+            self.assertIn("rate limit", error.lower())
+            self.assertIn("Try again", error)
+        
+        asyncio.run(run_test())
+    
+    def test_rate_limit_error_handling_both_apis(self):
+        """Test that rate limit errors on both APIs are properly reported"""
+        async def run_test():
+            fetcher = ImageFetcher(
+                pexels_key="test_key",
+                pixabay_key="test_pixabay_key",
+                cache_enabled=False
+            )
+            
+            # Mock rate limit on both
+            async def mock_rate_limit(*args, **kwargs):
+                raise aiohttp.ClientError("Rate limit exceeded")
+            
+            fetcher._fetch_from_pexels = mock_rate_limit
+            fetcher._fetch_from_pixabay = mock_rate_limit
+            
+            images, error = await fetcher.search_images("test", max_images=3)
+            
+            self.assertEqual(len(images), 0)
+            self.assertIsNotNone(error)
+            self.assertIn("rate limit", error.lower())
+            self.assertIn("Try again", error)
+        
+        asyncio.run(run_test())
+    
+    def test_partial_image_failure_recovery(self):
+        """Test graceful handling when some images are available but not all requested"""
+        async def run_test():
+            fetcher = ImageFetcher(
+                pexels_key="test_key",
+                cache_enabled=False
+            )
+            
+            # Mock returning fewer images than requested
+            async def mock_partial_results(*args, **kwargs):
+                return ["https://example.com/photo1.jpg"]  # Only 1 image when 3 requested
+            
+            fetcher._fetch_from_pexels = mock_partial_results
+            
+            images, error = await fetcher.search_images("test", max_images=3)
+            
+            # Should return the available image without error
+            self.assertEqual(len(images), 1)
+            self.assertIsNone(error)
+        
+        asyncio.run(run_test())
+    
+    def test_invalid_api_key_with_valid_fallback(self):
+        """Test that invalid primary API key gracefully falls back to valid secondary"""
+        async def run_test():
+            fetcher = ImageFetcher(
+                pexels_key="invalid_key",
+                pixabay_key="valid_key",
+                cache_enabled=False
+            )
+            
+            # Mock Pexels invalid key
+            async def mock_invalid(*args, **kwargs):
+                raise ValueError("Invalid Pexels API key")
+            
+            # Mock Pixabay success
+            async def mock_valid(*args, **kwargs):
+                return ["https://pixabay.com/photo1.jpg", "https://pixabay.com/photo2.jpg"]
+            
+            fetcher._fetch_from_pexels = mock_invalid
+            fetcher._fetch_from_pixabay = mock_valid
+            
+            images, error = await fetcher.search_images("test", max_images=3)
+            
+            # Should successfully get images from fallback
+            self.assertEqual(len(images), 2)
+            self.assertIsNone(error)
+            self.assertTrue(all("pixabay" in url for url in images))
+        
+        asyncio.run(run_test())
+    
+    def test_network_error_retry_exhaustion(self):
+        """Test that network errors are retried and eventually fail gracefully"""
+        async def run_test():
+            fetcher = ImageFetcher(
+                pexels_key="test_key",
+                cache_enabled=False
+            )
+            
+            # Mock network timeout
+            async def mock_timeout(*args, **kwargs):
+                raise asyncio.TimeoutError("Connection timeout")
+            
+            fetcher._fetch_from_pexels = mock_timeout
+            
+            images, error = await fetcher.search_images("test", max_images=3)
+            
+            self.assertEqual(len(images), 0)
+            self.assertIsNotNone(error)
         
         asyncio.run(run_test())
 

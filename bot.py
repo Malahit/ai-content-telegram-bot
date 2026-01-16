@@ -348,7 +348,9 @@ async def generate_post(message: types.Message, state: FSMContext):
                 try:
                     # Create media group
                     media = []
+                    logger.info(f"Creating media group with {len(image_urls)} images for user {user_id}")
                     for i, url in enumerate(image_urls):
+                        logger.debug(f"Adding image {i+1}/{len(image_urls)}: {url}")
                         if i == 0:
                             # Add caption to first image
                             media.append(InputMediaPhoto(media=url, caption=f"<b>✨ Готовый пост:</b>\n\n{content}"))
@@ -356,19 +358,32 @@ async def generate_post(message: types.Message, state: FSMContext):
                             media.append(InputMediaPhoto(media=url))
                     
                     await message.answer_media_group(media)
-                    logger.info(f"Post with {len(image_urls)} images sent to user {user_id}")
+                    logger.info(f"Post with {len(image_urls)} images sent successfully to user {user_id}")
                 except Exception as e:
-                    logger.error(f"Error sending media group: {e}", exc_info=True)
-                    # Fallback to text-only
-                    await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка отправки изображений: {str(e)}")
+                    logger.error(f"Error sending media group to user {user_id}: {e}", exc_info=True)
+                    logger.error(f"Failed image URLs: {image_urls}")
+                    # Fallback to text-only with recovery message
+                    await message.answer(
+                        f"<b>✨ Готовый пост:</b>\n\n{content}\n\n"
+                        f"⚠️ Ошибка отправки изображений.\n"
+                        f"💡 Попробуйте заново: нажмите 🖼️ <b>Пост с фото</b>"
+                    )
             else:
-                # No images found, send text only with error details
+                # No images found, send text only with error details and recovery message
                 error_detail = f": {error_msg}" if error_msg else ""
-                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Изображения не найдены{error_detail}")
-                logger.warning(f"No images found for '{topic}': {error_msg}")
+                await message.answer(
+                    f"<b>✨ Готовый пост:</b>\n\n{content}\n\n"
+                    f"⚠️ Изображения не найдены{error_detail}\n"
+                    f"💡 Попробуйте другую тему или позже: 🖼️ <b>Пост с фото</b>"
+                )
+                logger.warning(f"No images found for '{topic}' (user {user_id}): {error_msg}")
         except Exception as e:
-            logger.error(f"Error fetching images: {e}", exc_info=True)
-            await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}\n\n⚠️ Ошибка поиска изображений: {str(e)}")
+            logger.error(f"Error fetching images for '{topic}' (user {user_id}): {e}", exc_info=True)
+            await message.answer(
+                f"<b>✨ Готовый пост:</b>\n\n{content}\n\n"
+                f"⚠️ Ошибка поиска изображений: {str(e)}\n"
+                f"💡 Попробуйте заново: 🖼️ <b>Пост с фото</b>"
+            )
     else:
         # Text-only post
         await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
@@ -412,7 +427,9 @@ async def auto_post():
                 if image_urls:
                     # Send as media group with caption
                     media = []
+                    logger.info(f"Creating autopost media group with {len(image_urls)} images for topic '{topic}'")
                     for i, url in enumerate(image_urls):
+                        logger.debug(f"Autopost image {i+1}/{len(image_urls)}: {url}")
                         if i == 0:
                             # Add caption to first image
                             media.append(InputMediaPhoto(media=url, caption=f"{post_prefix}{content}"))
@@ -425,7 +442,8 @@ async def auto_post():
                 else:
                     logger.warning(f"No images found for autopost '{topic}': {error_msg}. Falling back to text-only.")
             except Exception as e:
-                logger.error(f"Error fetching/sending images for autopost: {e}. Falling back to text-only.", exc_info=True)
+                logger.error(f"Error fetching/sending images for autopost '{topic}': {e}", exc_info=True)
+                logger.error(f"Autopost fallback to text-only due to image error")
         
         # Send text-only (either by choice or fallback)
         await bot.send_message(

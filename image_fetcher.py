@@ -147,11 +147,20 @@ class ImageFetcher:
             "orientation": "landscape"
         }
         
+        logger.debug(f"Pexels API request: query='{query}', max_images={max_images}")
+        
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
             async with session.get(url, headers=headers, params=params) as response:
-                if response.status == 401:
+                status = response.status
+                logger.debug(f"Pexels API response: status={status}, query='{query}'")
+                
+                if status == 401:
                     logger.error("Pexels API: Invalid API key (401 Unauthorized)")
                     raise ValueError("Invalid Pexels API key")
+                
+                if status == 429:
+                    logger.warning(f"Pexels API: Rate limit exceeded (429 Too Many Requests) for query '{query}'")
+                    raise aiohttp.ClientError(f"Rate limit exceeded for Pexels API")
                 
                 response.raise_for_status()
                 data = await response.json()
@@ -168,6 +177,9 @@ class ImageFetcher:
                 ]
                 
                 logger.info(f"Pexels: Found {len(image_urls)} images for '{query}'")
+                if image_urls:
+                    logger.debug(f"Pexels image URLs: {image_urls}")
+                
                 return image_urls
     
     @retry(
@@ -203,11 +215,20 @@ class ImageFetcher:
             "orientation": "horizontal"
         }
         
+        logger.debug(f"Pixabay API request: query='{query}', max_images={max_images}")
+        
         async with aiohttp.ClientSession(timeout=self.timeout) as session:
             async with session.get(url, params=params) as response:
-                if response.status == 401:
+                status = response.status
+                logger.debug(f"Pixabay API response: status={status}, query='{query}'")
+                
+                if status == 401:
                     logger.error("Pixabay API: Invalid API key (401 Unauthorized)")
                     raise ValueError("Invalid Pixabay API key")
+                
+                if status == 429:
+                    logger.warning(f"Pixabay API: Rate limit exceeded (429 Too Many Requests) for query '{query}'")
+                    raise aiohttp.ClientError(f"Rate limit exceeded for Pixabay API")
                 
                 response.raise_for_status()
                 data = await response.json()
@@ -224,6 +245,9 @@ class ImageFetcher:
                 ]
                 
                 logger.info(f"Pixabay: Found {len(image_urls)} images for '{query}'")
+                if image_urls:
+                    logger.debug(f"Pixabay image URLs: {image_urls}")
+                
                 return image_urls
     
     async def search_images(self, query: str, max_images: int = 3) -> Tuple[List[str], Optional[str]]:
@@ -243,14 +267,18 @@ class ImageFetcher:
         Returns:
             Tuple of (list of image URLs, optional error message)
         """
+        logger.info(f"Searching images for query='{query}', max_images={max_images}")
+        
         # Check cache first
         if self.cache:
             cached = self.cache.get_cached_images(query)
             if cached:
+                logger.info(f"Returning {len(cached[:max_images])} cached images for '{query}'")
                 return cached[:max_images], None
         
         image_urls = []
         error_msg = None
+        rate_limited = False
         
         # Try Pexels first
         try:
@@ -258,13 +286,24 @@ class ImageFetcher:
             if image_urls:
                 if self.cache:
                     self.cache.cache_images(query, image_urls)
+                logger.info(f"Successfully fetched {len(image_urls)} images from Pexels for '{query}'")
                 return image_urls, None
             else:
                 error_msg = "No results from Pexels API"
+                logger.warning(f"Pexels returned no images for '{query}'")
         except ValueError as e:
             # API key not configured or invalid
             error_msg = str(e)
             logger.warning(f"Pexels fetch failed: {e}. Trying fallback...")
+        except aiohttp.ClientError as e:
+            error_details = str(e)
+            if "Rate limit" in error_details or "429" in error_details:
+                rate_limited = True
+                error_msg = "Pexels API rate limit exceeded"
+                logger.warning(f"Pexels rate limited for '{query}'. Trying fallback...")
+            else:
+                error_msg = f"Pexels API error: {type(e).__name__}"
+                logger.warning(f"Pexels fetch failed with {type(e).__name__}: {e}. Trying fallback...")
         except Exception as e:
             error_msg = f"Pexels API error: {type(e).__name__}"
             logger.warning(f"Pexels fetch failed: {e}. Trying fallback...")
@@ -275,17 +314,33 @@ class ImageFetcher:
             if image_urls:
                 if self.cache:
                     self.cache.cache_images(query, image_urls)
+                logger.info(f"Successfully fetched {len(image_urls)} images from Pixabay (fallback) for '{query}'")
                 return image_urls, None
             else:
                 error_msg = f"{error_msg}; No results from Pixabay API" if error_msg else "No results from Pixabay API"
+                logger.warning(f"Pixabay returned no images for '{query}'")
         except ValueError as e:
             # API key not configured or invalid
             error_msg = f"{error_msg}; {str(e)}" if error_msg else str(e)
             logger.error(f"All image sources failed for '{query}': {error_msg}")
+        except aiohttp.ClientError as e:
+            error_details = str(e)
+            if "Rate limit" in error_details or "429" in error_details:
+                rate_limited = True
+                error_msg = f"{error_msg}; Pixabay API rate limit exceeded" if error_msg else "Pixabay API rate limit exceeded"
+                logger.error(f"Both APIs rate limited for '{query}'")
+            else:
+                error_msg = f"{error_msg}; Pixabay API error: {type(e).__name__}" if error_msg else f"Pixabay API error: {type(e).__name__}"
+                logger.error(f"Pixabay fallback failed with {type(e).__name__}: {e}")
         except Exception as e:
             error_msg = f"{error_msg}; Pixabay API error: {type(e).__name__}" if error_msg else f"Pixabay API error: {type(e).__name__}"
             logger.error(f"All image sources failed for '{query}': {e}")
         
+        # Add rate limit hint to error message
+        if rate_limited and error_msg:
+            error_msg = f"{error_msg}. Try again in a few minutes."
+        
+        logger.error(f"Image search failed for '{query}': {error_msg}")
         return [], error_msg
 
 
