@@ -29,6 +29,7 @@ from translation_service import translation_service
 from rag_service import rag_service
 from utils.perplexity import generate_image as perplexity_generate_image, PerplexityError
 from database import image_db
+from handlers.content import generate_perplexity_image_with_fallback
 
 # Import statistics and image fetcher from main
 try:
@@ -233,11 +234,7 @@ async def generate_perplexity_image(topic: str) -> Optional[str]:
     """
     Generate an image using Perplexity API with caching and Pexels fallback.
     
-    Priority chain:
-    1. Check cache (24h TTL)
-    2. Try Perplexity image generation
-    3. Fallback to Pexels search
-    4. Return None if all methods fail
+    This is a wrapper around the handlers.content module for backward compatibility.
     
     Args:
         topic: The topic/prompt for image generation
@@ -245,47 +242,8 @@ async def generate_perplexity_image(topic: str) -> Optional[str]:
     Returns:
         Image URL or None if generation failed
     """
-    logger.info(f"Generating image for topic: {topic}")
-    
-    # Check cache first
-    cached_url = image_db.get_cached_image(topic)
-    if cached_url:
-        logger.info(f"Using cached Perplexity image for '{topic}'")
-        return cached_url
-    
-    # Try Perplexity image generation
-    try:
-        # Create a detailed prompt for better image quality
-        image_prompt = f"A high-quality, realistic, professional photograph about {topic}. Photorealistic, detailed, high resolution."
-        image_url = await perplexity_generate_image(image_prompt)
-        
-        if image_url:
-            # Cache the generated image
-            image_db.cache_image(topic, image_url)
-            logger.info(f"✅ Perplexity image generated and cached: {image_url}")
-            return image_url
-        else:
-            logger.warning(f"Perplexity returned no image for '{topic}'")
-    except PerplexityError as e:
-        logger.warning(f"Perplexity image generation failed for '{topic}': {e}")
-    except Exception as e:
-        logger.error(f"Unexpected error in Perplexity image generation for '{topic}': {e}", exc_info=True)
-    
-    # Fallback to Pexels if Perplexity fails
-    if IMAGES_ENABLED and image_fetcher:
-        logger.info(f"Falling back to Pexels for '{topic}'")
-        try:
-            image_urls, error_msg = await image_fetcher.search_images(topic, max_images=1)
-            if image_urls:
-                logger.info(f"✅ Pexels fallback successful: {image_urls[0]}")
-                return image_urls[0]
-            else:
-                logger.warning(f"Pexels fallback also failed for '{topic}': {error_msg}")
-        except Exception as e:
-            logger.error(f"Pexels fallback error for '{topic}': {e}", exc_info=True)
-    
-    logger.error(f"All image generation methods failed for '{topic}'")
-    return None
+    # Use the handler module with image_fetcher for fallback support
+    return await generate_perplexity_image_with_fallback(topic, image_fetcher if IMAGES_ENABLED else None)
 
 
 
