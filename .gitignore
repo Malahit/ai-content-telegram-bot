@@ -21,6 +21,10 @@ bot_statistics.json
 image_cache.db
 image_cache.db-journal
 
+# Perplexity AI image cache database
+cache_images.db
+cache_images.db-journal
+
 # Wordstat cache database
 wordstat_cache.db
 wordstat_cache.db-journal
