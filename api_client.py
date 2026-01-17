@@ -1,7 +1,7 @@
 import httpx
 import logging
 import asyncio
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, before_sleep_log
 from config import config
 from logger_config import logger
 
@@ -13,7 +13,8 @@ class APIClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError))
+        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError)),
+        before_sleep=before_sleep_log(logger, logging.WARNING)
     )
     async def generate_content(self, prompt: str, model: str = "sonar-small-online") -> dict:
         url = "https://api.perplexity.ai/chat/completions"
@@ -29,12 +30,6 @@ class APIClient:
         
         try:
             response = await self.client.post(url, json=payload, headers=headers)
-            if response.status_code == 429:
-                retry_after = int(response.headers.get("Retry-After", 5))
-                logger.warning(f"⏳ Perplexity API перегружен. Повтор через {retry_after} сек...")
-                await asyncio.sleep(retry_after)
-                return await self.generate_content(prompt, model)
-            
             response.raise_for_status()
             data = response.json()
             content = data["choices"][0]["message"]["content"]
@@ -52,13 +47,19 @@ class APIClient:
             }
         
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error: {e.response.status_code} - {e.response.text}")
-            if e.response.status_code == 401:
+            if e.response.status_code == 429:
+                retry_after = int(e.response.headers.get("Retry-After", 5))
+                logger.warning(f"⏳ Perplexity API перегружен. Запрос будет повторен через {retry_after} сек...")
+                # Tenacity автоматически обработает retry благодаря декоратору
+            elif e.response.status_code == 401:
+                logger.critical("❌ Неверный API-ключ Perplexity!")
                 return {"content": "❌ Ошибка авторизации Perplexity API. Обратитесь к администратору.", "sources": []}
-            return {"content": f"❌ Ошибка API: {str(e)}", "sources": []}
+            
+            raise  # Передаем исключение в tenacity для retry
+        
         except Exception as e:
-            logger.exception("Unexpected error in generate_content")
-            return {"content": f"❌ Критическая ошибка: {str(e)}", "sources": []}
+            logger.exception("💥 Критическая ошибка в generate_content")
+            return {"content": f"❌ Системная ошибка: {str(e)}", "sources": []}
     
     async def close(self):
         await self.client.aclose()
