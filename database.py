@@ -17,7 +17,7 @@ class ImageDatabase:
     Stores image URLs with a 24-hour TTL to reduce API calls and improve performance.
     """
     
-    def __init__(self, db_path: str = "cache_images.db", ttl_hours: int = 24):
+    def __init__(self, db_path: str = "cache_images.db", ttl_hours: float = 24):
         """
         Initialize database connection and schema.
         
@@ -44,6 +44,18 @@ class ImageDatabase:
             conn.commit()
             logger.debug("cache_images table initialized")
     
+    def _normalize_prompt(self, prompt: str) -> str:
+        """
+        Normalize prompt for consistent caching.
+        
+        Args:
+            prompt: Raw prompt string
+            
+        Returns:
+            Normalized prompt (lowercase and trimmed)
+        """
+        return prompt.lower().strip()
+    
     def get_cached_image(self, prompt: str) -> Optional[str]:
         """
         Retrieve cached image URL for a prompt if not expired.
@@ -54,10 +66,11 @@ class ImageDatabase:
         Returns:
             Image URL if cached and valid, None otherwise
         """
+        normalized_prompt = self._normalize_prompt(prompt)
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute(
                 "SELECT image_url, timestamp FROM cache_images WHERE prompt = ?",
-                (prompt.lower().strip(),)
+                (normalized_prompt,)
             )
             row = cursor.fetchone()
             
@@ -69,7 +82,7 @@ class ImageDatabase:
                     return image_url
                 else:
                     # Clean up expired entry
-                    conn.execute("DELETE FROM cache_images WHERE prompt = ?", (prompt.lower().strip(),))
+                    conn.execute("DELETE FROM cache_images WHERE prompt = ?", (normalized_prompt,))
                     conn.commit()
                     logger.info(f"Cache EXPIRED for prompt: '{prompt[:50]}...'")
             
@@ -88,10 +101,11 @@ class ImageDatabase:
         if not image_url:
             return
         
+        normalized_prompt = self._normalize_prompt(prompt)
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO cache_images (prompt, image_url, timestamp, model) VALUES (?, ?, ?, ?)",
-                (prompt.lower().strip(), image_url, int(time.time()), model)
+                (normalized_prompt, image_url, int(time.time()), model)
             )
             conn.commit()
             logger.info(f"Cached image for prompt: '{prompt[:50]}...' -> {image_url}")

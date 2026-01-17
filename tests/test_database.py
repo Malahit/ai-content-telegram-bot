@@ -13,6 +13,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from database import ImageDatabase
 
 
+# Test constants
+TEST_TTL_HOURS = 0.001  # ~3.6 seconds for quick testing
+
+
 def test_database_initialization():
     """Test database initialization"""
     print("\n🧪 Test 1: Database Initialization")
@@ -62,18 +66,19 @@ def test_cache_expiration():
     
     try:
         # Use very short TTL for testing
-        db = ImageDatabase(db_path=db_path, ttl_hours=0.0001)  # ~0.36 seconds
+        db = ImageDatabase(db_path=db_path, ttl_hours=TEST_TTL_HOURS)
         
         prompt = "test prompt"
         image_url = "https://example.com/image.jpg"
         db.cache_image(prompt, image_url)
         
-        # Should be cached immediately
+        # Should be cached immediately (check within first 0.1 seconds)
+        time.sleep(0.1)
         cached_url = db.get_cached_image(prompt)
-        assert cached_url == image_url, "Image should be cached"
+        assert cached_url == image_url, "Image should be cached immediately after insertion"
         
-        # Wait for expiration
-        time.sleep(1)
+        # Wait for expiration (TTL is 3.6 seconds, wait 4 seconds to be sure)
+        time.sleep(4)
         
         # Should be expired now
         cached_url = db.get_cached_image(prompt)
@@ -92,14 +97,14 @@ def test_cleanup_expired():
         db_path = tmp.name
     
     try:
-        db = ImageDatabase(db_path=db_path, ttl_hours=0.0001)
+        db = ImageDatabase(db_path=db_path, ttl_hours=TEST_TTL_HOURS)
         
         # Cache multiple images
         for i in range(3):
             db.cache_image(f"prompt_{i}", f"https://example.com/image_{i}.jpg")
         
-        # Wait for expiration
-        time.sleep(1)
+        # Wait for expiration (TTL is 3.6 seconds, wait 4 seconds)
+        time.sleep(4)
         
         # Cleanup
         deleted_count = db.cleanup_expired()

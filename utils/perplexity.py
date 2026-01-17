@@ -12,9 +12,28 @@ from logger_config import logger
 from config import config
 
 
+# Constants
+MAX_PROMPT_LOG_LENGTH = 50
+
+
 class PerplexityError(Exception):
     """Custom exception for Perplexity API errors."""
     pass
+
+
+def _truncate_prompt(prompt: str) -> str:
+    """
+    Truncate prompt for logging purposes.
+    
+    Args:
+        prompt: The prompt to truncate
+        
+    Returns:
+        Truncated prompt string
+    """
+    if len(prompt) > MAX_PROMPT_LOG_LENGTH:
+        return f"{prompt[:MAX_PROMPT_LOG_LENGTH]}..."
+    return prompt
 
 
 async def generate_image(prompt: str, model: str = 'flux.1-schnell') -> Optional[str]:
@@ -31,7 +50,7 @@ async def generate_image(prompt: str, model: str = 'flux.1-schnell') -> Optional
     Raises:
         PerplexityError: If API request fails after retries
     """
-    logger.info(f"Generating image with Perplexity: prompt='{prompt[:50]}...', model='{model}'")
+    logger.info(f"Generating image with Perplexity: prompt='{_truncate_prompt(prompt)}', model='{model}'")
     
     url = "https://api.perplexity.ai/images/generate"
     headers = {
@@ -116,7 +135,7 @@ async def generate_text(prompt: str, model: str = 'sonar-large') -> Optional[str
     Raises:
         PerplexityError: If API request fails after retries
     """
-    logger.info(f"Generating text with Perplexity: prompt='{prompt[:50]}...', model='{model}'")
+    logger.info(f"Generating text with Perplexity: prompt='{_truncate_prompt(prompt)}', model='{model}'")
     
     url = "https://api.perplexity.ai/chat/completions"
     headers = {

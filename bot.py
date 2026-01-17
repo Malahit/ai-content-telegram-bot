@@ -8,6 +8,7 @@ Supports optional RAG (Retrieval-Augmented Generation), translation, and image g
 import asyncio
 import random
 import re
+import time
 from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, types
@@ -550,7 +551,6 @@ async def callback_regenerate_image(callback: types.CallbackQuery):
         content = await generate_content(topic)
     
     # Generate new image (force regeneration by using a slightly modified prompt)
-    import time
     modified_topic = f"{topic} {int(time.time())}"  # Add timestamp to bypass cache
     image_url = await generate_perplexity_image(modified_topic)
     
