@@ -12,7 +12,7 @@ from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -26,6 +26,8 @@ from logger_config import logger
 from api_client import api_client, PerplexityAPIError
 from translation_service import translation_service
 from rag_service import rag_service
+from utils.perplexity import generate_image as perplexity_generate_image, PerplexityError
+from database import image_db
 
 # Import statistics and image fetcher from main
 try:
@@ -83,6 +85,8 @@ dp = Dispatcher(storage=MemoryStorage())
 class PostGeneration(StatesGroup):
     waiting_for_topic = State()
     post_type = State()  # "text" or "images"
+    last_topic = State()  # Store last topic for regeneration
+    last_content = State()  # Store last content for regeneration
 
 # Main keyboard for all users
 kb = ReplyKeyboardMarkup(
@@ -205,6 +209,85 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
         return f"❌ Произошла ошибка. Пожалуйста, попробуйте снова."
 
 
+def get_inline_keyboard(topic: str) -> InlineKeyboardMarkup:
+    """
+    Create inline keyboard with action buttons for posts.
+    
+    Args:
+        topic: The topic used for the post
+        
+    Returns:
+        InlineKeyboardMarkup with buttons for regeneration
+    """
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="🔄 Новый пост", callback_data=f"new_post:{topic}"),
+            InlineKeyboardButton(text="🎨 Новое фото", callback_data=f"regen_image:{topic}")
+        ]
+    ])
+    return keyboard
+
+
+async def generate_perplexity_image(topic: str) -> Optional[str]:
+    """
+    Generate an image using Perplexity API with caching and Pexels fallback.
+    
+    Priority chain:
+    1. Check cache (24h TTL)
+    2. Try Perplexity image generation
+    3. Fallback to Pexels search
+    4. Return None if all methods fail
+    
+    Args:
+        topic: The topic/prompt for image generation
+        
+    Returns:
+        Image URL or None if generation failed
+    """
+    logger.info(f"Generating image for topic: {topic}")
+    
+    # Check cache first
+    cached_url = image_db.get_cached_image(topic)
+    if cached_url:
+        logger.info(f"Using cached Perplexity image for '{topic}'")
+        return cached_url
+    
+    # Try Perplexity image generation
+    try:
+        # Create a detailed prompt for better image quality
+        image_prompt = f"A high-quality, realistic, professional photograph about {topic}. Photorealistic, detailed, high resolution."
+        image_url = await perplexity_generate_image(image_prompt)
+        
+        if image_url:
+            # Cache the generated image
+            image_db.cache_image(topic, image_url)
+            logger.info(f"✅ Perplexity image generated and cached: {image_url}")
+            return image_url
+        else:
+            logger.warning(f"Perplexity returned no image for '{topic}'")
+    except PerplexityError as e:
+        logger.warning(f"Perplexity image generation failed for '{topic}': {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in Perplexity image generation for '{topic}': {e}", exc_info=True)
+    
+    # Fallback to Pexels if Perplexity fails
+    if IMAGES_ENABLED and image_fetcher:
+        logger.info(f"Falling back to Pexels for '{topic}'")
+        try:
+            image_urls, error_msg = await image_fetcher.search_images(topic, max_images=1)
+            if image_urls:
+                logger.info(f"✅ Pexels fallback successful: {image_urls[0]}")
+                return image_urls[0]
+            else:
+                logger.warning(f"Pexels fallback also failed for '{topic}': {error_msg}")
+        except Exception as e:
+            logger.error(f"Pexels fallback error for '{topic}': {e}", exc_info=True)
+    
+    logger.error(f"All image generation methods failed for '{topic}'")
+    return None
+
+
+
 @dp.message(CommandStart())
 async def start_handler(message: types.Message):
     """
@@ -219,14 +302,15 @@ async def start_handler(message: types.Message):
     
     rag_status = "✅ RAG" if rag_service.is_enabled() else "⚠️ Без RAG"
     translate_status = "🌐 RU/EN" if translation_service.is_enabled() else ""
-    images_status = "🖼️ Images" if IMAGES_ENABLED else ""
+    images_status = "🎨 AI Images"  # Always available via Perplexity
     
     await message.answer(
-        f"<b>🚀 AI Content Bot v2.2 PROD {rag_status} {translate_status} {images_status}</b>\n\n"
-        f"💬 <i>Тема поста → готовый текст 200-300 слов!</i>\n\n"
+        f"<b>🚀 AI Content Bot v2.3 PROD {rag_status} {translate_status} {images_status}</b>\n\n"
+        f"💬 <i>Тема поста → готовый текст 200-300 слов + AI-изображение!</i>\n\n"
+        f"🎨 <b>Perplexity AI Images</b> - реалистичные изображения\n"
         f"📡 Автопостинг: <code>{config.channel_id}</code> (каждые {config.autopost_interval_hours}ч)\n"
         f"⚙️ max_tokens={config.max_tokens} | {config.api_model}\n\n"
-        f"<b>Примеры:</b> SMM Москва | фитнес | завтрак",
+        f"<b>Примеры:</b> фитнес | завтрак | SMM Москва",
         reply_markup=get_keyboard(message.from_user.id)
     )
 
@@ -242,15 +326,11 @@ async def text_post_handler(message: types.Message, state: FSMContext):
 
 @dp.message(F.text == "🖼️ Пост с фото")
 async def image_post_handler(message: types.Message, state: FSMContext):
-    """Handle post with images request"""
-    if not IMAGES_ENABLED:
-        await message.answer("❌ <b>Генерация изображений недоступна</b>\nAPI ключ Pexels не настроен.")
-        return
-    
+    """Handle post with images request - uses Perplexity AI image generation"""
     await state.set_state(PostGeneration.waiting_for_topic)
     await state.update_data(post_type="images")
     rag_status = "с RAG" if rag_service.is_enabled() else "обычный"
-    await message.answer(f"✍️ <b>Напиши тему поста с фото</b> ({rag_status})!")
+    await message.answer(f"✍️ <b>Напиши тему поста с AI-фото</b> ({rag_status})!")
 
 
 @dp.message(F.text.in_({"❓ Помощь", "ℹ️ Статус", "📊 Статистика"}))
@@ -273,9 +353,10 @@ async def menu_handler(message: types.Message, state: FSMContext):
         await message.answer(
             f"🎯 <b>Как использовать:</b>\n"
             f"• 📝 <b>Пост</b> - только текст\n"
-            f"• 🖼️ <b>Пост с фото</b> - текст + до 3 изображений\n"
+            f"• 🖼️ <b>Пост с фото</b> - текст + AI-изображение (Perplexity)\n"
             f"• Пиши тему, получи готовый контент!\n"
-            f"• 🌐 Авто RU/EN перевод\n\n"
+            f"• 🌐 Авто RU/EN перевод\n"
+            f"• 🎨 AI-изображения от Perplexity\n\n"
             f"<b>Команды:</b> /start\n"
             f"<code>Техподдержка: @твой_nick</code>"
         )
@@ -286,7 +367,8 @@ async def menu_handler(message: types.Message, state: FSMContext):
             f"✅ Perplexity: {config.api_model}\n"
             f"📚 RAG: {'ON' if rag_service.is_enabled() else 'OFF'}\n"
             f"🌐 Translate: {'ON' if translation_service.is_enabled() else 'OFF'}\n"
-            f"🖼️ Images: {'ON' if IMAGES_ENABLED else 'OFF'}\n"
+            f"🎨 AI Images: ON (Perplexity)\n"
+            f"🖼️ Fallback: {'ON' if IMAGES_ENABLED else 'OFF'} (Pexels/Pixabay)\n"
             f"⏰ Автопост: каждые {config.autopost_interval_hours}ч → {config.channel_id}"
         )
     elif message.text == "📊 Статистика":
@@ -311,6 +393,7 @@ async def generate_post(message: types.Message, state: FSMContext):
     
     Takes user's topic and generates a post using AI with optional RAG context.
     Can generate text-only or posts with images based on FSM state.
+    Uses Perplexity for image generation with Pexels fallback.
     
     Args:
         message: Incoming message with topic
@@ -336,60 +419,158 @@ async def generate_post(message: types.Message, state: FSMContext):
     if STATS_ENABLED:
         stats_tracker.record_post(user_id, topic, post_type)
     
-    if post_type == "images" and IMAGES_ENABLED:
-        # Fetch images for the post
-        await message.answer("🖼️ Ищу подходящие изображения...")
+    if post_type == "images":
+        # Generate/fetch image using Perplexity with Pexels fallback
+        await message.answer("🎨 Генерирую AI-изображение с Perplexity...")
         try:
-            # Use async search_images - returns (urls, error_msg)
-            image_urls, error_msg = await image_fetcher.search_images(topic, max_images=3)
+            image_url = await generate_perplexity_image(topic)
             
-            if image_urls:
-                # Send text with images
+            if image_url:
+                # Send text with AI-generated image
                 try:
-                    # Create media group
-                    media = []
-                    logger.info(f"Creating media group with {len(image_urls)} images for user {user_id}")
-                    for i, url in enumerate(image_urls):
-                        logger.debug(f"Adding image {i+1}/{len(image_urls)}: {url}")
-                        if i == 0:
-                            # Add caption to first image
-                            media.append(InputMediaPhoto(media=url, caption=f"<b>✨ Готовый пост:</b>\n\n{content}"))
-                        else:
-                            media.append(InputMediaPhoto(media=url))
-                    
-                    await message.answer_media_group(media)
-                    logger.info(f"Post with {len(image_urls)} images sent successfully to user {user_id}")
+                    logger.info(f"Sending AI-generated image to user {user_id}: {image_url}")
+                    await message.answer_photo(
+                        photo=image_url,
+                        caption=f"<b>✨ Готовый пост:</b>\n\n{content}",
+                        reply_markup=get_inline_keyboard(topic)
+                    )
+                    logger.info(f"Post with AI image sent successfully to user {user_id}")
                 except Exception as e:
-                    logger.error(f"Error sending media group to user {user_id}: {e}", exc_info=True)
-                    logger.error(f"Failed image URLs: {image_urls}")
+                    logger.error(f"Error sending photo to user {user_id}: {e}", exc_info=True)
+                    logger.error(f"Failed image URL: {image_url}")
                     # Fallback to text-only with recovery message
                     await message.answer(
                         f"<b>✨ Готовый пост:</b>\n\n{content}\n\n"
-                        f"⚠️ Ошибка отправки изображений.\n"
-                        f"💡 Попробуйте заново: нажмите 🖼️ <b>Пост с фото</b>"
+                        f"⚠️ Ошибка отправки изображения.\n"
+                        f"💡 Попробуйте заново: нажмите 🖼️ <b>Пост с фото</b>",
+                        reply_markup=get_inline_keyboard(topic)
                     )
             else:
-                # No images found, send text only with error details and recovery message
-                error_detail = f": {error_msg}" if error_msg else ""
+                # No image generated, send text only with error details
                 await message.answer(
                     f"<b>✨ Готовый пост:</b>\n\n{content}\n\n"
-                    f"⚠️ Изображения не найдены{error_detail}\n"
-                    f"💡 Попробуйте другую тему или позже: 🖼️ <b>Пост с фото</b>"
+                    f"⚠️ Не удалось сгенерировать изображение (Perplexity и Pexels недоступны)\n"
+                    f"💡 Попробуйте позже или другую тему",
+                    reply_markup=get_inline_keyboard(topic)
                 )
-                logger.warning(f"No images found for '{topic}' (user {user_id}): {error_msg}")
+                logger.warning(f"No image generated for '{topic}' (user {user_id})")
         except Exception as e:
-            logger.error(f"Error fetching images for '{topic}' (user {user_id}): {e}", exc_info=True)
+            logger.error(f"Error generating image for '{topic}' (user {user_id}): {e}", exc_info=True)
             await message.answer(
                 f"<b>✨ Готовый пост:</b>\n\n{content}\n\n"
-                f"⚠️ Ошибка поиска изображений: {str(e)}\n"
-                f"💡 Попробуйте заново: 🖼️ <b>Пост с фото</b>"
+                f"⚠️ Ошибка генерации изображения: {str(e)}\n"
+                f"💡 Попробуйте заново: 🖼️ <b>Пост с фото</b>",
+                reply_markup=get_inline_keyboard(topic)
             )
     else:
         # Text-only post
-        await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
+        await message.answer(
+            f"<b>✨ Готовый пост:</b>\n\n{content}",
+            reply_markup=get_inline_keyboard(topic)
+        )
     
     # Clear state
     await state.clear()
+
+
+@dp.callback_query(F.data.startswith("new_post:"))
+async def callback_new_post(callback: types.CallbackQuery):
+    """
+    Handle 'New post' button callback.
+    
+    Generates a completely new post (text + image) for the same topic.
+    
+    Args:
+        callback: Callback query from inline button
+    """
+    topic = callback.data.split(":", 1)[1]
+    user_id = callback.from_user.id
+    logger.info(f"User {user_id} requested new post for topic: {topic}")
+    
+    await callback.answer("🔄 Генерирую новый пост...")
+    await callback.message.answer(f"<b>🔄 Генерирую новый пост</b> про <i>{topic}</i>... ⏳")
+    
+    # Generate new content
+    content = await generate_content(topic)
+    
+    # Generate new image
+    image_url = await generate_perplexity_image(topic)
+    
+    if image_url:
+        try:
+            await callback.message.answer_photo(
+                photo=image_url,
+                caption=f"<b>✨ Новый пост:</b>\n\n{content}",
+                reply_markup=get_inline_keyboard(topic)
+            )
+            logger.info(f"New post with image sent to user {user_id}")
+        except Exception as e:
+            logger.error(f"Error sending new post photo to user {user_id}: {e}", exc_info=True)
+            await callback.message.answer(
+                f"<b>✨ Новый пост:</b>\n\n{content}\n\n"
+                f"⚠️ Ошибка отправки изображения",
+                reply_markup=get_inline_keyboard(topic)
+            )
+    else:
+        await callback.message.answer(
+            f"<b>✨ Новый пост:</b>\n\n{content}\n\n"
+            f"⚠️ Не удалось сгенерировать изображение",
+            reply_markup=get_inline_keyboard(topic)
+        )
+
+
+@dp.callback_query(F.data.startswith("regen_image:"))
+async def callback_regenerate_image(callback: types.CallbackQuery):
+    """
+    Handle 'Regenerate image only' button callback.
+    
+    Generates only a new image while keeping the same text.
+    
+    Args:
+        callback: Callback query from inline button
+    """
+    topic = callback.data.split(":", 1)[1]
+    user_id = callback.from_user.id
+    logger.info(f"User {user_id} requested image regeneration for topic: {topic}")
+    
+    await callback.answer("🎨 Генерирую новое изображение...")
+    
+    # Get the current message text (caption)
+    current_text = callback.message.caption or callback.message.text
+    
+    # Extract just the content part (remove the header)
+    if current_text:
+        # Remove the "✨ Готовый пост:" or "✨ Новый пост:" header and any error messages
+        content = current_text.split("\n\n", 1)[1] if "\n\n" in current_text else current_text
+        # Remove any warning/error messages at the end
+        if "⚠️" in content:
+            content = content.split("⚠️")[0].strip()
+    else:
+        # Fallback: regenerate content if we can't extract it
+        content = await generate_content(topic)
+    
+    # Generate new image (force regeneration by using a slightly modified prompt)
+    import time
+    modified_topic = f"{topic} {int(time.time())}"  # Add timestamp to bypass cache
+    image_url = await generate_perplexity_image(modified_topic)
+    
+    if image_url:
+        try:
+            await callback.message.answer_photo(
+                photo=image_url,
+                caption=f"<b>✨ Готовый пост (новое фото):</b>\n\n{content}",
+                reply_markup=get_inline_keyboard(topic)
+            )
+            logger.info(f"New image sent to user {user_id}")
+        except Exception as e:
+            logger.error(f"Error sending regenerated image to user {user_id}: {e}", exc_info=True)
+            await callback.message.answer(
+                f"⚠️ Ошибка отправки нового изображения. Попробуйте еще раз."
+            )
+    else:
+        await callback.message.answer(
+            f"⚠️ Не удалось сгенерировать новое изображение. Попробуйте позже."
+        )
 
 
 # Autoposter configuration
@@ -407,11 +588,11 @@ async def auto_post():
     Automated posting function.
     
     Selects a random topic from predefined list and posts generated
-    content to the configured channel. Randomly decides whether to include images.
+    content to the configured channel. Uses Perplexity for images with Pexels fallback.
     """
     topic = random.choice(AUTOPOST_TOPICS)
-    # Randomly decide if this autopost should include images (50% chance if enabled)
-    include_images = IMAGES_ENABLED and random.choice([True, False])
+    # Randomly decide if this autopost should include images (50% chance)
+    include_images = random.choice([True, False])
     
     logger.info(f"🕒 Автопост: {topic} (with images: {include_images})")
     
@@ -420,29 +601,24 @@ async def auto_post():
         post_prefix = f"<b>🤖 Автопост {random.randint(1,999)}:</b>\n\n"
         
         if include_images:
-            # Try to fetch and send with images
+            # Try to generate image with Perplexity
             try:
-                image_urls, error_msg = await image_fetcher.search_images(topic, max_images=3)
+                image_url = await generate_perplexity_image(topic)
                 
-                if image_urls:
-                    # Send as media group with caption
-                    media = []
-                    logger.info(f"Creating autopost media group with {len(image_urls)} images for topic '{topic}'")
-                    for i, url in enumerate(image_urls):
-                        logger.debug(f"Autopost image {i+1}/{len(image_urls)}: {url}")
-                        if i == 0:
-                            # Add caption to first image
-                            media.append(InputMediaPhoto(media=url, caption=f"{post_prefix}{content}"))
-                        else:
-                            media.append(InputMediaPhoto(media=url))
-                    
-                    await bot.send_media_group(config.channel_id, media)
-                    logger.info(f"✅ Автопост с {len(image_urls)} изображениями опубликован: {topic} → {config.channel_id}")
+                if image_url:
+                    # Send with AI-generated image
+                    logger.info(f"Sending autopost with AI image for topic '{topic}'")
+                    await bot.send_photo(
+                        config.channel_id,
+                        photo=image_url,
+                        caption=f"{post_prefix}{content}"
+                    )
+                    logger.info(f"✅ Автопост с AI-изображением опубликован: {topic} → {config.channel_id}")
                     return
                 else:
-                    logger.warning(f"No images found for autopost '{topic}': {error_msg}. Falling back to text-only.")
+                    logger.warning(f"No image generated for autopost '{topic}'. Falling back to text-only.")
             except Exception as e:
-                logger.error(f"Error fetching/sending images for autopost '{topic}': {e}", exc_info=True)
+                logger.error(f"Error generating/sending image for autopost '{topic}': {e}", exc_info=True)
                 logger.error(f"Autopost fallback to text-only due to image error")
         
         # Send text-only (either by choice or fallback)
