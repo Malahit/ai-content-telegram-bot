@@ -32,6 +32,9 @@ class Config:
         self.pplx_api_key: Optional[str] = os.getenv("PPLX_API_KEY") or os.getenv("PERPLEXITY_API_KEY") or None
         self.channel_id: str = os.getenv("CHANNEL_ID", "@content_ai_helper_bot")
         
+        # Payment Configuration
+        self.provider_token: Optional[str] = os.getenv("PROVIDER_TOKEN") or None
+        
         # API Configuration
         self.api_timeout: int = int(os.getenv("API_TIMEOUT", "45"))
         self.max_tokens: int = int(os.getenv("MAX_TOKENS", "800"))

@@ -17,6 +17,12 @@ vectorstore/
 # Statistics data
 bot_statistics.json
 
+# Database files
+bot_database.db
+bot_database.db-journal
+*.db
+*.db-journal
+
 # Image cache database
 image_cache.db
 image_cache.db-journal
