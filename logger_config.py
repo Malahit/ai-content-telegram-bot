@@ -1,12 +1,13 @@
-import re
-
-class SensitiveDataFilter:
-    ... # Existing methods
-
-    @staticmethod
-    def mask_sensitive_data(text):
-        # Mask Perplexity API keys
-        text = re.sub(r'pplx-[a-zA-Z0-9_-]{20,}', 'pplx-***MASKED***', text)
-        # Mask Pexels API key
-        text = re.sub(r'PEXELS_API_KEY=\w+', '***MASKED***', text)
-        return text
+def filter(self, record: logging.LogRecord) -> bool:
+    message = record.getMessage()
+    
+    # Сначала стандартные паттерны
+    for pattern, replacement in self.PATTERNS:
+        message = pattern.sub(replacement, message)
+    
+    # Затем специфичные маскировки
+    message = self.mask_sensitive_data(message)  # ← Добавить эту строку
+    
+    record.msg = message
+    record.args = ()
+    return True
