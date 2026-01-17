@@ -11,10 +11,16 @@
 - 📝 **AI Content Generation** - Generate 200-300 word posts with emojis and call-to-action
   - 📝 **Text-only posts** - Generate posts with just text content
   - 🖼️ **Posts with images** - Generate posts with text and up to 3 relevant images (via Pexels API)
+- 💎 **Premium Subscriptions** - Monetize your bot with subscription support
+  - 💳 **Payment Integration** - Telegram Payments API support
+  - 🌟 **Premium Features** - Restrict features to premium users
+  - ⏰ **Automatic Expiration** - Scheduled subscription management
+  - 📊 **Payment Tracking** - Full payment history and analytics
 - 🔥 **RAG Support** - Upload your own knowledge base files for context-aware generation
 - 📊 **Statistics (Admin only)** - Track bot usage metrics
   - Total posts generated (by type)
   - Active users count
+  - Premium user statistics
   - Popular post topics
 - 🌐 **Multi-language** - Automatic RU/EN translation and language detection
 - ⏰ **Auto-posting** - Schedule automatic posts to your Telegram channel (every 6 hours)
@@ -55,13 +61,24 @@
    BOT_TOKEN=your_telegram_bot_token
    PPLX_API_KEY=your_perplexity_api_key
    CHANNEL_ID=@your_channel_username
+   PROVIDER_TOKEN=your_payment_provider_token  # Optional, for subscriptions
    PEXELS_API_KEY=your_pexels_api_key  # Optional, for posts with images
    ADMIN_USER_IDS=123456789,987654321  # Telegram IDs of admins (comma-separated)
    ```
    
    See `.env.example` for a template.
 
-4. **Run the bot**
+4. **Initialize the database**
+   ```bash
+   alembic upgrade head
+   ```
+
+5. **Run the bot**
+   ```bash
+   python main.py
+   ```
+   
+   Or use the legacy bot.py (without subscription features):
    ```bash
    python bot.py
    ```
@@ -75,8 +92,22 @@
 | `BOT_TOKEN` | ✅ Yes | Telegram Bot Token from @BotFather | `1234567890:ABCdef...` |
 | `PPLX_API_KEY` | ✅ Yes | Perplexity API Key | `pplx-...` |
 | `CHANNEL_ID` | ⚠️ Optional | Channel username for auto-posting | `@my_channel` |
+| `PROVIDER_TOKEN` | ⚠️ Optional | Payment provider token for subscriptions | `provider_token...` |
 | `PEXELS_API_KEY` | ⚠️ Optional | Pexels API Key for image generation | `pexels-...` |
 | `ADMIN_USER_IDS` | ⚠️ Optional | Telegram IDs of admins (comma-separated) | `123456789,987654321` |
+
+### Payment Provider Setup (for subscriptions)
+
+To enable subscription payments:
+
+1. Open [@BotFather](https://t.me/botfather) in Telegram
+2. Select your bot
+3. Go to **Bot Settings** → **Payments**
+4. Choose a payment provider (Stripe, etc.)
+5. Get your provider token
+6. Add to `.env` file as `PROVIDER_TOKEN`
+
+**Note:** Use test tokens for development. See [Telegram Payments Documentation](https://core.telegram.org/bots/payments) for details.
 
 ### Pexels API Setup (for image posts)
 
@@ -100,6 +131,10 @@ The bot will use your knowledge base to generate more accurate and context-aware
 ### Bot Commands
 
 - `/start` - Start the bot and see the welcome message
+- `/subscribe` - View and purchase premium subscription plans
+- `/status` - Check your subscription status
+- `/generate <topic>` - Generate content directly (premium only)
+- `/stats` - View premium user statistics (admin only)
 
 ### Interactive Buttons
 
