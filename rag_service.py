@@ -1,4 +1,20 @@
 """
+# Copilot TASK:
+# 1. Добавь автоматическую перезагрузку FAISS-индекса при изменении файлов в ./knowledge/
+# 2. Используй библиотеку watchdog (Observer + FileSystemEventHandler)
+# 3. Реализуй в методе __init__:
+#    - Запуск observer в отдельном потоке
+#    - Обработчик on_modified/on_created для файлов .txt/.md/.pdf
+# 4. При изменении файлов:
+#    - Пересоздай self.vectorstore через self._initialize_vectorstore()
+#    - Залогируй событие: "🔄 RAG-база перезагружена из-за изменений в {file_path}"
+# 5. Сохраняй асинхронность:
+#    - Используй asyncio.to_thread для blocking-операций watchdog
+#    - Добавь метод async def stop_observer(self) для graceful shutdown
+# 6. Добавь в импорты:
+#    import threading
+#    from watchdog.observers import Observer
+#    from watchdog.events import FileSystemEventHandler
 RAG (Retrieval-Augmented Generation) service module.
 
 This module handles RAG functionality with proper error handling
