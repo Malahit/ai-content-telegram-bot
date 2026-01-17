@@ -7,7 +7,7 @@ for both text and image generation.
 
 import aiohttp
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional
 from logger_config import logger
 from config import config
 

@@ -13,7 +13,7 @@ from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -27,9 +27,8 @@ from logger_config import logger
 from api_client import api_client, PerplexityAPIError
 from translation_service import translation_service
 from rag_service import rag_service
-from utils.perplexity import generate_image as perplexity_generate_image, PerplexityError
-from database import image_db
 from handlers.content import generate_perplexity_image_with_fallback
+from database import image_db
 
 # Import statistics and image fetcher from main
 try:
@@ -87,8 +86,6 @@ dp = Dispatcher(storage=MemoryStorage())
 class PostGeneration(StatesGroup):
     waiting_for_topic = State()
     post_type = State()  # "text" or "images"
-    last_topic = State()  # Store last topic for regeneration
-    last_content = State()  # Store last content for regeneration
 
 # Main keyboard for all users
 kb = ReplyKeyboardMarkup(
@@ -508,9 +505,8 @@ async def callback_regenerate_image(callback: types.CallbackQuery):
         # Fallback: regenerate content if we can't extract it
         content = await generate_content(topic)
     
-    # Generate new image (force regeneration by using a slightly modified prompt)
-    modified_topic = f"{topic} {int(time.time())}"  # Add timestamp to bypass cache
-    image_url = await generate_perplexity_image(modified_topic)
+    # Generate new image (note: may use cache if same topic requested recently)
+    image_url = await generate_perplexity_image(topic)
     
     if image_url:
         try:
@@ -589,26 +585,44 @@ async def auto_post():
         logger.error(f"❌ Ошибка автопоста: {e}", exc_info=True)
 
 
+async def cleanup_image_cache():
+    """Periodic cleanup of expired image cache entries."""
+    deleted_count = image_db.cleanup_expired()
+    if deleted_count > 0:
+        logger.info(f"🧹 Cleaned up {deleted_count} expired image cache entries")
+
+
 async def on_startup():
     """
     Bot startup function.
     
-    Configures and starts the autoposter scheduler.
+    Configures and starts the autoposter and cache cleanup schedulers.
     """
     # Image fetcher is ready (API keys loaded during initialization)
     if IMAGES_ENABLED and image_fetcher:
         logger.info("Image fetcher ready with Pexels/Pixabay APIs")
     
     scheduler = AsyncIOScheduler()
+    
+    # Add autopost job
     scheduler.add_job(
         auto_post,
         'interval',
         hours=config.autopost_interval_hours
     )
+    
+    # Add cache cleanup job (run daily)
+    scheduler.add_job(
+        cleanup_image_cache,
+        'interval',
+        hours=24
+    )
+    
     scheduler.start()
     logger.info(
         f"🚀 Автопостинг запущен: каждые {config.autopost_interval_hours}ч → {config.channel_id}"
     )
+    logger.info("🧹 Image cache cleanup scheduled: every 24 hours")
 
 
 async def main():

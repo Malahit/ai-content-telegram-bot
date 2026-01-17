@@ -25,7 +25,7 @@ def test_database_initialization():
         db_path = tmp.name
     
     try:
-        db = ImageDatabase(db_path=db_path, ttl_hours=24)
+        ImageDatabase(db_path=db_path, ttl_hours=24)
         assert os.path.exists(db_path), "Database file should be created"
         print("✅ Database initialized successfully")
     finally:

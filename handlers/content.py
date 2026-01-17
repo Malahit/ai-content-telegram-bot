@@ -1,11 +1,9 @@
 """
 Content generation handler for AI Content Telegram Bot.
 
-This module handles the content generation flow including text and image generation
-using Perplexity API with Pexels/Pixabay fallback.
+This module handles the image generation flow using Perplexity API with Pexels/Pixabay fallback.
 """
 
-import asyncio
 from typing import Optional, Tuple
 from logger_config import logger
 from utils.perplexity import generate_image as perplexity_generate_image, PerplexityError
@@ -14,11 +12,10 @@ from database import image_db
 
 async def generate_content_with_image(topic: str, image_fetcher=None) -> Tuple[Optional[str], Optional[str]]:
     """
-    Generate both text content and image for a given topic using Perplexity API.
+    Generate image for a given topic using Perplexity API.
     
-    This is the main content generation pipeline that:
-    1. Generates text content (handled by caller)
-    2. Generates/fetches image via Perplexity with caching and fallback
+    Note: Text content generation is handled separately by the caller via api_client.
+    This function only handles image generation with caching and fallback.
     
     Priority chain for images:
     1. Check cache (24h TTL)
@@ -27,7 +24,7 @@ async def generate_content_with_image(topic: str, image_fetcher=None) -> Tuple[O
     4. Return None if all methods fail
     
     Args:
-        topic: The topic for content and image generation
+        topic: The topic for image generation
         image_fetcher: Optional ImageFetcher instance for Pexels fallback
         
     Returns:
@@ -68,22 +65,23 @@ async def generate_perplexity_image_with_fallback(topic: str, image_fetcher=None
     """
     logger.info(f"Generating image for topic: {topic}")
     
-    # Check cache first
-    cached_url = image_db.get_cached_image(topic)
+    # Create topic-specific, high-quality prompt in Russian for better results
+    # Format: "профессиональное фото на тему {topic}, реалистичная фотосъёмка, высокая детализация, качество 4K, realistic photography"
+    image_prompt = f"профессиональное фото на тему {topic}, реалистичная фотосъёмка, высокая детализация, качество 4K, realistic photography"
+    
+    # Check cache first using the full image prompt as key for consistency
+    cached_url = image_db.get_cached_image(image_prompt)
     if cached_url:
         logger.info(f"Using cached Perplexity image for '{topic}'")
         return cached_url
     
     # Try Perplexity image generation
     try:
-        # Create topic-specific, high-quality prompt in Russian for better results
-        # Format: "профессиональное фото на тему {topic}, реалистичная фотосъёмка, высокая детализация, качество 4K, realistic photography"
-        image_prompt = f"профессиональное фото на тему {topic}, реалистичная фотосъёмка, высокая детализация, качество 4K, realistic photography"
         image_url = await perplexity_generate_image(image_prompt)
         
         if image_url:
-            # Cache the generated image
-            image_db.cache_image(topic, image_url)
+            # Cache the generated image using the same prompt key
+            image_db.cache_image(image_prompt, image_url)
             logger.info(f"✅ Perplexity image generated and cached: {image_url}")
             return image_url
         else:
