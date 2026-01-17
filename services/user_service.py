@@ -14,6 +14,10 @@ from database.database import AsyncSessionLocal
 from logger_config import logger
 
 
+# Constants
+DAYS_PER_MONTH = 30  # Simplified calculation for subscription periods
+
+
 async def add_user(user: User) -> User:
     """
     Add a new user to the database.
@@ -73,10 +77,10 @@ async def activate_subscription(telegram_id: int, months: int = 1) -> Optional[U
             
             # If user already has an active subscription, extend from current end date
             if user.subscription_end and user.subscription_end > now:
-                user.subscription_end = user.subscription_end + timedelta(days=months * 30)
+                user.subscription_end = user.subscription_end + timedelta(days=months * DAYS_PER_MONTH)
             else:
                 # Otherwise, start from now
-                user.subscription_end = now + timedelta(days=months * 30)
+                user.subscription_end = now + timedelta(days=months * DAYS_PER_MONTH)
             
             user.is_premium = True
             user.updated_at = now
@@ -134,7 +138,7 @@ async def count_premium() -> int:
     """
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(func.count(User.id)).where(User.is_premium == True)
+            select(func.count(User.id)).where(User.is_premium.is_(True))
         )
         count = result.scalar()
         return count or 0

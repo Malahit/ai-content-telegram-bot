@@ -66,7 +66,8 @@ class SubscriptionMiddleware(BaseMiddleware):
                         f"🔒 <b>Premium Feature</b>\n\n"
                         f"The /{command} command is only available for premium subscribers.\n\n"
                         f"Upgrade to premium to unlock this and other exclusive features!\n"
-                        f"Use /subscribe to get started."
+                        f"Use /subscribe to get started.",
+                        parse_mode="HTML"
                     )
                     return None  # Don't pass to next handler
         

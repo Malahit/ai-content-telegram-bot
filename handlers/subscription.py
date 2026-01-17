@@ -43,7 +43,8 @@ async def subscribe_command(message: Message):
         await message.answer(
             f"✅ <b>You already have an active premium subscription!</b>\n\n"
             f"📅 Expires: {expiry_str}\n\n"
-            f"Use /status to check your subscription details."
+            f"Use /status to check your subscription details.",
+            parse_mode="HTML"
         )
         return
     

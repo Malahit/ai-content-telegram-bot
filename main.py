@@ -99,7 +99,8 @@ dp = Dispatcher(storage=MemoryStorage())
 dp.include_router(subscription_router)
 
 # Add subscription middleware for premium-only commands
-# For now, we don't restrict any existing commands, but /generate will be premium-only
+# The /generate command restriction is handled in its own handler
+# You can add other commands here that should require premium access
 dp.message.middleware(SubscriptionMiddleware(premium_commands=[]))
 
 # FSM States for post generation

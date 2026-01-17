@@ -170,7 +170,8 @@ async def handle_success(message: Message) -> None:
             f"✅ <b>Payment Successful!</b>\n\n"
             f"🎉 Your premium subscription has been activated for <b>{months} month{'s' if months > 1 else ''}</b>.\n"
             f"💰 Amount: ${payment_info.total_amount / 100:.2f}\n\n"
-            f"Enjoy your premium features!"
+            f"Enjoy your premium features!",
+            parse_mode="HTML"
         )
         logger.info(f"Subscription activated for user {user_id}: {months} month(s)")
         

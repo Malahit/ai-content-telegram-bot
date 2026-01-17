@@ -34,7 +34,7 @@ async def check_expired_subscriptions(bot: Optional[Bot] = None) -> None:
         # Find users with expired subscriptions that are still marked as premium
         result = await session.execute(
             select(User).where(
-                User.is_premium == True,
+                User.is_premium.is_(True),
                 User.subscription_end < now
             )
         )
@@ -67,7 +67,8 @@ async def check_expired_subscriptions(bot: Optional[Bot] = None) -> None:
                                 "Your premium subscription has expired.\n\n"
                                 "Renew now to continue enjoying premium features!\n"
                                 "Use /subscribe to renew."
-                            )
+                            ),
+                            parse_mode="HTML"
                         )
                         logger.info(f"Sent expiration notification to user {user.telegram_id}")
                     except Exception as e:
