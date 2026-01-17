@@ -177,7 +177,7 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
     
     try:
         # Generate content using API
-        content = api_client.generate_content(topic, rag_context, max_tokens)
+        content = await api_client.generate_content(topic, rag_context, max_tokens)
         
         # Sanitize content to remove citation artifacts and URLs
         content = sanitize_content(content)
