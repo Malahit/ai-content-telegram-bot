@@ -12,7 +12,7 @@ from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart, Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto, Message
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -232,7 +232,7 @@ async def start_handler(message: types.Message):
 
 
 @dp.message(Command("generate"))
-async def generate_command(message: Message):
+async def generate_command(message: types.Message):
     """
     Handle /generate command.
     
