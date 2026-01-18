@@ -2,6 +2,7 @@
 
 from .user_service import add_user, get_user, activate_subscription, is_premium, count_premium
 from .payment_service import create_invoice, handle_pre_checkout, handle_success
+from .image_fetcher import ImageFetcher
 
 __all__ = [
     'add_user',
@@ -11,5 +12,6 @@ __all__ = [
     'count_premium',
     'create_invoice',
     'handle_pre_checkout',
-    'handle_success'
+    'handle_success',
+    'ImageFetcher'
 ]
