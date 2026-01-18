@@ -70,7 +70,7 @@ config_info = config.get_safe_config_info()
 logger.info(f"Configuration loaded: {config_info}")
 logger.info(f"RAG Status: {'ENABLED' if rag_service.is_enabled() else 'DISABLED'}")
 logger.info(f"Translation Status: {'ENABLED' if translation_service.is_enabled() else 'DISABLED'}")
-logger.info(f"🖼️ Pexels: {'ON' if config.pexels_api_key else 'OFF'}")
+logger.info(f"🖼️ Pexels: {'ON' if config.pexels_api_key and IMAGES_ENABLED else 'OFF'}")
 logger.info(f"Statistics Status: {'ENABLED' if STATS_ENABLED else 'DISABLED'}")
 logger.info(f"Admin Users: {len(ADMIN_USER_IDS)}")
 
@@ -361,11 +361,11 @@ async def generate_post(message: types.Message, state: FSMContext):
         try:
             # Fetch image using Pexels API
             image_urls = await image_fetcher.fetch_images(topic, num_images=1)
-            image_url = image_urls[0] if image_urls else ""
+            image_url = image_urls[0] if image_urls and len(image_urls) > 0 else ""
             
             # Send photo with caption or fallback to text
             if image_url:
-                await message.answer_photo(photo=image_url, caption=content[:1024], parse_mode="HTML")
+                await message.answer_photo(photo=image_url, caption=content[:TELEGRAM_CAPTION_MAX_LENGTH], parse_mode="HTML")
             else:
                 await message.answer(content, parse_mode="HTML")
         except Exception as e:
