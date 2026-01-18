@@ -359,20 +359,15 @@ async def generate_post(message: types.Message, state: FSMContext):
         await message.answer("🖼️ Ищу подходящие изображения...")
         
         try:
-            # Secure check: Ensure Pexels API key is available
-            if config.pexels_api_key:
-                # Fetch image using Pexels API - max 1 image for user posts
-                image_urls = await image_fetcher.fetch_images(topic, num_images=1)
-                image_url = image_urls[0] if image_urls and len(image_urls) > 0 else ""
-                
-                # Send photo with caption or fallback to text
-                if image_url:
-                    logger.info(f"[Recorded] Image post with Pexels for user {user_id}, topic: {topic}")
-                    await message.answer_photo(photo=image_url, caption=content[:TELEGRAM_CAPTION_MAX_LENGTH], parse_mode="HTML")
-                else:
-                    await message.answer(content, parse_mode="HTML")
+            # Fetch image using Pexels/Pixabay API - max 1 image for user posts
+            image_urls = await image_fetcher.fetch_images(topic, num_images=1)
+            image_url = image_urls[0] if image_urls and len(image_urls) > 0 else ""
+            
+            # Send photo with caption or fallback to text
+            if image_url:
+                logger.info(f"[Recorded] Image post for user {user_id}, topic: {topic}")
+                await message.answer_photo(photo=image_url, caption=content[:TELEGRAM_CAPTION_MAX_LENGTH], parse_mode="HTML")
             else:
-                # Fallback to text if no API key
                 await message.answer(content, parse_mode="HTML")
         except Exception as e:
             logger.error(f"Error fetching images for '{topic}' (user {user_id}): {e}", exc_info=True)
@@ -480,6 +475,7 @@ async def main():
     logger.info("✅ BOT v2.2 PRODUCTION READY!")
     logger.info("=" * 60)
     logger.info(f"🔑 PEXELS_API_KEY доступен: {bool(config.pexels_api_key)}")
+    logger.info(f"🔑 PIXABAY_API_KEY доступен: {bool(config.pixabay_api_key)}")
     
     await on_startup()
     await dp.start_polling(bot)
