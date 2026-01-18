@@ -339,35 +339,48 @@ async def generate_post(message: types.Message, state: FSMContext):
     if post_type == "images" and IMAGES_ENABLED:
         # Fetch images for the post
         await message.answer("🖼️ Ищу подходящие изображения...")
+        
+        # Debug logging before fetching images
+        logger.info(f"🔍 [IMAGE] Запрос на генерацию с изображением. Тема: {topic}")
+        logger.info(f"🔑 [IMAGE] PEXELS_API_KEY в config: {bool(config.pexels_api_key)}")
+        
         try:
             # Use async search_images - returns (urls, error_msg)
             image_urls, error_msg = await image_fetcher.search_images(topic, max_images=3)
             
+            # Detailed validation of image_urls after fetching
+            logger.info(f"urls [IMAGE] Полученные URL изображений: {image_urls}")
+            if not image_urls or not isinstance(image_urls, list):
+                logger.error("❌ [IMAGE] image_urls пустой или не является списком")
+            elif len(image_urls) == 0:
+                logger.warning("⚠️ [IMAGE] Список URL пустой")
+            else:
+                logger.info(f"✅ [IMAGE] Найдено URL: {len(image_urls)}")
+            
             if image_urls:
-                # Send text with images
+                # Validate image URLs before sending
+                valid_url = None
+                if image_urls and len(image_urls) > 0 and image_urls[0].strip().startswith('http'):
+                    valid_url = image_urls[0].strip()
+                    logger.info(f"📤 [IMAGE] Валидный URL для отправки: {valid_url[:60]}...")
+                else:
+                    logger.error("❌ [IMAGE] Невалидный URL изображения")
+                
+                # Wrap photo sending in try/except
                 try:
-                    # Create media group
-                    media = []
-                    logger.info(f"Creating media group with {len(image_urls)} images for user {user_id}")
-                    for i, url in enumerate(image_urls):
-                        logger.debug(f"Adding image {i+1}/{len(image_urls)}: {url}")
-                        if i == 0:
-                            # Add caption to first image
-                            media.append(InputMediaPhoto(media=url, caption=f"<b>✨ Готовый пост:</b>\n\n{content}"))
-                        else:
-                            media.append(InputMediaPhoto(media=url))
-                    
-                    await message.answer_media_group(media)
-                    logger.info(f"Post with {len(image_urls)} images sent successfully to user {user_id}")
+                    if valid_url:
+                        await message.answer_photo(photo=valid_url, caption=content[:1024], parse_mode="HTML")
+                        logger.success("🎉 [IMAGE] ИЗОБРАЖЕНИЕ УСПЕШНО ОТПРАВЛЕНО!")
+                        # Clear state and return
+                        await state.clear()
+                        return
                 except Exception as e:
-                    logger.error(f"Error sending media group to user {user_id}: {e}", exc_info=True)
-                    logger.error(f"Failed image URLs: {image_urls}")
-                    # Fallback to text-only with recovery message
-                    await message.answer(
-                        f"<b>✨ Готовый пост:</b>\n\n{content}\n\n"
-                        f"⚠️ Ошибка отправки изображений.\n"
-                        f"💡 Попробуйте заново: нажмите 🖼️ <b>Пост с фото</b>"
-                    )
+                    logger.exception(f"💥 [IMAGE] ОШИБКА ОТПРАВКИ: {str(e)}")
+                    logger.error(f"🔧 [IMAGE] Тип ошибки: {type(e).__name__}")
+                
+                # Fallback to text-only with warning
+                logger.warning("⏭️ [IMAGE] Отправляю только текст")
+                await message.answer(content, parse_mode="HTML")
             else:
                 # No images found, send text only with error details and recovery message
                 error_detail = f": {error_msg}" if error_msg else ""
