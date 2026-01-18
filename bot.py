@@ -236,7 +236,8 @@ async def generate_command(message: types.Message):
     """
     Handle /generate command.
     
-    Simple test handler for image generation command.
+    Test handler that confirms the command is working.
+    Future implementation will add image generation logic.
     
     Args:
         message: Incoming message
