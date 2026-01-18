@@ -58,6 +58,9 @@ except ImportError:
 # Get admin user IDs from config
 ADMIN_USER_IDS = config.admin_user_ids
 
+# Telegram caption length limit
+TELEGRAM_CAPTION_MAX_LENGTH = 1024
+
 # Log startup information (without sensitive data)
 logger.info("=" * 60)
 logger.info("AI Content Telegram Bot v2.2 Starting...")
@@ -360,7 +363,7 @@ async def generate_post(message: types.Message, state: FSMContext):
             if image_urls:
                 # Validate image URLs before sending
                 valid_url = None
-                if image_urls and len(image_urls) > 0 and image_urls[0].strip().startswith('http'):
+                if image_urls[0].strip().startswith('http'):
                     valid_url = image_urls[0].strip()
                     logger.info(f"📤 [IMAGE] Валидный URL для отправки: {valid_url[:60]}...")
                 else:
@@ -369,7 +372,7 @@ async def generate_post(message: types.Message, state: FSMContext):
                 # Wrap photo sending in try/except
                 try:
                     if valid_url:
-                        await message.answer_photo(photo=valid_url, caption=content[:1024], parse_mode="HTML")
+                        await message.answer_photo(photo=valid_url, caption=content[:TELEGRAM_CAPTION_MAX_LENGTH], parse_mode="HTML")
                         logger.success("🎉 [IMAGE] ИЗОБРАЖЕНИЕ УСПЕШНО ОТПРАВЛЕНО!")
                         # Clear state and return
                         await state.clear()
