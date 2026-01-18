@@ -11,7 +11,7 @@ import re
 from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
@@ -229,6 +229,21 @@ async def start_handler(message: types.Message):
         f"<b>Примеры:</b> SMM Москва | фитнес | завтрак",
         reply_markup=get_keyboard(message.from_user.id)
     )
+
+
+@dp.message(Command("generate"))
+async def generate_command(message: types.Message):
+    """
+    Handle /generate command.
+    
+    Test handler that confirms the command is working.
+    Future implementation will add image generation logic.
+    
+    Args:
+        message: Incoming message
+    """
+    logger.info(f"User {message.from_user.id} used /generate command")
+    await message.answer("Тест изображений работает!")
 
 
 @dp.message(F.text == "📝 Пост")
