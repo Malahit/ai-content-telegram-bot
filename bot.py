@@ -38,7 +38,7 @@ except ImportError:
     logger.warning("⚠️ bot_statistics module not available")
 
 try:
-    from image_fetcher import ImageFetcher
+    from services.image_fetcher import ImageFetcher
     # Initialize with both API keys
     image_fetcher = ImageFetcher(
         pexels_key=config.pexels_api_key,
@@ -70,7 +70,7 @@ config_info = config.get_safe_config_info()
 logger.info(f"Configuration loaded: {config_info}")
 logger.info(f"RAG Status: {'ENABLED' if rag_service.is_enabled() else 'DISABLED'}")
 logger.info(f"Translation Status: {'ENABLED' if translation_service.is_enabled() else 'DISABLED'}")
-logger.info(f"Images Status: {'ENABLED' if IMAGES_ENABLED else 'DISABLED'}")
+logger.info(f"🖼️ Pexels: {'ON' if config.pexels_api_key else 'OFF'}")
 logger.info(f"Statistics Status: {'ENABLED' if STATS_ENABLED else 'DISABLED'}")
 logger.info(f"Admin Users: {len(ADMIN_USER_IDS)}")
 
@@ -156,7 +156,7 @@ def sanitize_content(content: str) -> str:
     return content.strip()
 
 
-async def generate_content(topic: str, max_tokens: Optional[int] = None, message: Optional[types.Message] = None) -> str:
+async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
     """
     Generate content for a given topic using Perplexity API.
     
@@ -165,12 +165,10 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None, message
     2. Calling the API to generate content
     3. Applying translation if needed
     4. Adding metadata about RAG sources
-    5. Optionally fetching and sending images with the content
     
     Args:
         topic: The topic to generate content about
         max_tokens: Maximum tokens for the response (optional)
-        message: Message object for sending responses with images (optional)
         
     Returns:
         str: Generated content with optional translation and metadata
@@ -200,41 +198,6 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None, message
             generated_content = content
         
         logger.info("Content generation completed successfully")
-        
-        # If message is provided, handle image fetching and sending
-        if message and IMAGES_ENABLED and image_fetcher:
-            # Fetch images for the topic
-            image_urls = await image_fetcher.fetch_images(topic)
-            
-            # Add debugging logs
-            logger.info(f"🔍 DEBUG: Получено URL изображений: {image_urls}")
-            
-            if image_urls:
-                logger.info(f"✅ DEBUG: Первый URL: {image_urls[0]}")
-            else:
-                logger.warning("❌ DEBUG: image_urls пустой список")
-            
-            # Validate image URLs
-            valid_url = None
-            if image_urls and image_urls[0].strip().startswith('http'):
-                valid_url = image_urls[0].strip()
-                logger.info(f"📤 DEBUG: Отправляю изображение по URL: {valid_url[:60]}...")
-            else:
-                logger.error("🚫 DEBUG: Невалидный URL изображения. Отправляю только текст.")
-            
-            # Send the photo with exception handling
-            try:
-                if valid_url:
-                    await message.answer_photo(photo=valid_url, caption=generated_content[:1024], parse_mode="HTML")
-                    return generated_content  # End execution after successfully sending the photo
-            except Exception as e:
-                logger.exception(f"💥 DEBUG: Ошибка отправки фото: {str(e)}")
-                logger.error(f"🔧 DEBUG: Тип ошибки: {type(e).__name__}")
-            
-            # Fallback to sending text only
-            await message.answer(generated_content, parse_mode="HTML")
-            return generated_content
-        
         return generated_content
         
     except PerplexityAPIError as e:
@@ -395,63 +358,19 @@ async def generate_post(message: types.Message, state: FSMContext):
         # Fetch images for the post
         await message.answer("🖼️ Ищу подходящие изображения...")
         
-        # Debug logging before fetching images
-        logger.info(f"🔍 [IMAGE] Запрос на генерацию с изображением. Тема: {topic}")
-        logger.info(f"🔑 [IMAGE] PEXELS_API_KEY в config: {bool(config.pexels_api_key)}")
-        
         try:
-            # Use async search_images - returns (urls, error_msg)
-            image_urls, error_msg = await image_fetcher.search_images(topic, max_images=3)
+            # Fetch image using Pexels API
+            image_urls = await image_fetcher.fetch_images(topic, num_images=1)
+            image_url = image_urls[0] if image_urls else ""
             
-            # Detailed validation of image_urls after fetching
-            logger.info(f"urls [IMAGE] Полученные URL изображений: {image_urls}")
-            if not image_urls or not isinstance(image_urls, list):
-                logger.error("❌ [IMAGE] image_urls пустой или не является списком")
-            elif len(image_urls) == 0:
-                logger.warning("⚠️ [IMAGE] Список URL пустой")
+            # Send photo with caption or fallback to text
+            if image_url:
+                await message.answer_photo(photo=image_url, caption=content[:1024], parse_mode="HTML")
             else:
-                logger.info(f"✅ [IMAGE] Найдено URL: {len(image_urls)}")
-            
-            if image_urls:
-                # Validate image URLs before sending
-                valid_url = None
-                if image_urls[0].strip().startswith('http'):
-                    valid_url = image_urls[0].strip()
-                    logger.info(f"📤 [IMAGE] Валидный URL для отправки: {valid_url[:60]}...")
-                else:
-                    logger.error("❌ [IMAGE] Невалидный URL изображения")
-                
-                # Wrap photo sending in try/except
-                try:
-                    if valid_url:
-                        await message.answer_photo(photo=valid_url, caption=content[:TELEGRAM_CAPTION_MAX_LENGTH], parse_mode="HTML")
-                        logger.success("🎉 [IMAGE] ИЗОБРАЖЕНИЕ УСПЕШНО ОТПРАВЛЕНО!")
-                        # Clear state and return
-                        await state.clear()
-                        return
-                except Exception as e:
-                    logger.exception(f"💥 [IMAGE] ОШИБКА ОТПРАВКИ: {str(e)}")
-                    logger.error(f"🔧 [IMAGE] Тип ошибки: {type(e).__name__}")
-                
-                # Fallback to text-only with warning
-                logger.warning("⏭️ [IMAGE] Отправляю только текст")
                 await message.answer(content, parse_mode="HTML")
-            else:
-                # No images found, send text only with error details and recovery message
-                error_detail = f": {error_msg}" if error_msg else ""
-                await message.answer(
-                    f"<b>✨ Готовый пост:</b>\n\n{content}\n\n"
-                    f"⚠️ Изображения не найдены{error_detail}\n"
-                    f"💡 Попробуйте другую тему или позже: 🖼️ <b>Пост с фото</b>"
-                )
-                logger.warning(f"No images found for '{topic}' (user {user_id}): {error_msg}")
         except Exception as e:
             logger.error(f"Error fetching images for '{topic}' (user {user_id}): {e}", exc_info=True)
-            await message.answer(
-                f"<b>✨ Готовый пост:</b>\n\n{content}\n\n"
-                f"⚠️ Ошибка поиска изображений: {str(e)}\n"
-                f"💡 Попробуйте заново: 🖼️ <b>Пост с фото</b>"
-            )
+            await message.answer(content, parse_mode="HTML")
     else:
         # Text-only post
         await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
