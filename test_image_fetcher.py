@@ -5,9 +5,15 @@ Tests async image fetching with retry, fallback, and caching functionality.
 """
 import asyncio
 import os
+import sys
 import tempfile
 import logging
-from image_fetcher import ImageFetcher, ImageCache
+
+# Add parent directory to path to allow direct import
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Import directly from the module to avoid services package dependencies
+from services.image_fetcher import ImageFetcher, ImageCache
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

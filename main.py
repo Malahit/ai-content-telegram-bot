@@ -53,7 +53,7 @@ except ImportError:
     logger.warning("⚠️ bot_statistics module not available")
 
 try:
-    from image_fetcher import ImageFetcher
+    from services.image_fetcher import ImageFetcher
     # Initialize with both API keys
     image_fetcher = ImageFetcher(
         pexels_key=config.pexels_api_key,
@@ -391,7 +391,44 @@ async def generate_command(message: types.Message):
     await message.answer("⏳ Генерирую контент...")
     
     content = await generate_content(topic, user_id)
+    
+    # Fetch images if image fetcher is available
+    if IMAGES_ENABLED and image_fetcher:
+        try:
+            # Fetch images associated with the topic
+            image_urls = await image_fetcher.fetch_images(topic, num_images=1)
+            # Extract the primary image link
+            image_url = image_urls[0] if image_urls else ""
+            
+            # Send photo with caption if image URL exists
+            if image_url:
+                try:
+                    await message.answer_photo(
+                        photo=image_url,
+                        caption=content[:1024],
+                        parse_mode="HTML"
+                    )
+                    # Record post with image
+                    if STATS_ENABLED and stats_tracker:
+                        stats_tracker.record_post(user_id, topic[:50], "text_with_image")
+                    return  # End execution after sending the photo
+                except Exception as e:
+                    logger.error(f"⚠️ Error sending image: {e}")
+                    # Fallback to text-only post
+                    await message.answer(content, parse_mode="HTML")
+                    # Record text-only post for failed image send
+                    if STATS_ENABLED and stats_tracker:
+                        stats_tracker.record_post(user_id, topic[:50], "text")
+                    return
+        except Exception as e:
+            logger.error(f"⚠️ Error fetching image: {e}")
+            # Fallback to text-only post
+    
+    # Send text-only post (either no images available or error occurred)
     await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
+    # Record text-only post
+    if STATS_ENABLED and stats_tracker:
+        stats_tracker.record_post(user_id, topic[:50], "text")
 
 
 @dp.message(PostGeneration.waiting_for_topic)
