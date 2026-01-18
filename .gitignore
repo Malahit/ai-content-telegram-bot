@@ -79,3 +79,4 @@ metro-config.js
 # Backup files
 *.backup
 *_old.py
+logger_config.py.broken
