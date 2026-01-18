@@ -406,20 +406,6 @@ async def generate_post(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-@dp.message()
-async def echo_handler(message: Message):
-    """
-    Echo handler for debugging purposes.
-    
-    Logs and echoes back all incoming messages.
-    
-    Args:
-        message: Incoming message
-    """
-    logger.info(f"Получено сообщение: {message.text}")
-    await message.answer(f"Бот получил: {message.text}")
-
-
 # Autoposter configuration
 AUTOPOST_TOPICS = [
     'SMM Москва',
