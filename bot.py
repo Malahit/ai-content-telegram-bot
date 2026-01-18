@@ -153,7 +153,7 @@ def sanitize_content(content: str) -> str:
     return content.strip()
 
 
-async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
+async def generate_content(topic: str, max_tokens: Optional[int] = None, message: Optional[types.Message] = None) -> str:
     """
     Generate content for a given topic using Perplexity API.
     
@@ -162,10 +162,12 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
     2. Calling the API to generate content
     3. Applying translation if needed
     4. Adding metadata about RAG sources
+    5. Optionally fetching and sending images with the content
     
     Args:
         topic: The topic to generate content about
         max_tokens: Maximum tokens for the response (optional)
+        message: Message object for sending responses with images (optional)
         
     Returns:
         str: Generated content with optional translation and metadata
@@ -190,12 +192,47 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
         
         # Add RAG info if available (only if there is RAG info to add)
         if rag_info:
-            final_content = f"{content}{rag_info}"
+            generated_content = f"{content}{rag_info}"
         else:
-            final_content = content
+            generated_content = content
         
         logger.info("Content generation completed successfully")
-        return final_content
+        
+        # If message is provided, handle image fetching and sending
+        if message and IMAGES_ENABLED and image_fetcher:
+            # Fetch images for the topic
+            image_urls = await image_fetcher.fetch_images(topic)
+            
+            # Add debugging logs
+            logger.info(f"🔍 DEBUG: Получено URL изображений: {image_urls}")
+            
+            if image_urls:
+                logger.info(f"✅ DEBUG: Первый URL: {image_urls[0]}")
+            else:
+                logger.warning("❌ DEBUG: image_urls пустой список")
+            
+            # Validate image URLs
+            valid_url = None
+            if image_urls and image_urls[0].strip().startswith('http'):
+                valid_url = image_urls[0].strip()
+                logger.info(f"📤 DEBUG: Отправляю изображение по URL: {valid_url[:60]}...")
+            else:
+                logger.error("🚫 DEBUG: Невалидный URL изображения. Отправляю только текст.")
+            
+            # Send the photo with exception handling
+            try:
+                if valid_url:
+                    await message.answer_photo(photo=valid_url, caption=generated_content[:1024], parse_mode="HTML")
+                    return generated_content  # End execution after successfully sending the photo
+            except Exception as e:
+                logger.exception(f"💥 DEBUG: Ошибка отправки фото: {str(e)}")
+                logger.error(f"🔧 DEBUG: Тип ошибки: {type(e).__name__}")
+            
+            # Fallback to sending text only
+            await message.answer(generated_content, parse_mode="HTML")
+            return generated_content
+        
+        return generated_content
         
     except PerplexityAPIError as e:
         logger.error(f"Content generation failed: {e}")
