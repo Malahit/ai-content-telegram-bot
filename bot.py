@@ -11,8 +11,8 @@ import re
 from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, types
-from aiogram.filters import CommandStart
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
+from aiogram.filters import CommandStart, Command
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto, Message
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -231,6 +231,20 @@ async def start_handler(message: types.Message):
     )
 
 
+@dp.message(Command("generate"))
+async def generate_command(message: Message):
+    """
+    Handle /generate command.
+    
+    Simple test handler for image generation command.
+    
+    Args:
+        message: Incoming message
+    """
+    logger.info(f"User {message.from_user.id} used /generate command")
+    await message.answer("Тест изображений работает!")
+
+
 @dp.message(F.text == "📝 Пост")
 async def text_post_handler(message: types.Message, state: FSMContext):
     """Handle text-only post request"""
@@ -390,6 +404,20 @@ async def generate_post(message: types.Message, state: FSMContext):
     
     # Clear state
     await state.clear()
+
+
+@dp.message()
+async def echo_handler(message: Message):
+    """
+    Echo handler for debugging purposes.
+    
+    Logs and echoes back all incoming messages.
+    
+    Args:
+        message: Incoming message
+    """
+    logger.info(f"Получено сообщение: {message.text}")
+    await message.answer(f"Бот получил: {message.text}")
 
 
 # Autoposter configuration
