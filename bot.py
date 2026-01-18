@@ -212,16 +212,16 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None, message
                 logger.warning("❌ DEBUG: image_urls пустой список")
             
             # Validate image URLs
+            valid_url = None
             if image_urls and image_urls[0].strip().startswith('http'):
                 valid_url = image_urls[0].strip()
                 logger.info(f"📤 DEBUG: Отправляю изображение по URL: {valid_url[:60]}...")
             else:
                 logger.error("🚫 DEBUG: Невалидный URL изображения. Отправляю только текст.")
-                image_urls = []
             
             # Send the photo with exception handling
             try:
-                if image_urls:
+                if valid_url:
                     await message.answer_photo(photo=valid_url, caption=generated_content[:1024], parse_mode="HTML")
                     return generated_content  # End execution after successfully sending the photo
             except Exception as e:
