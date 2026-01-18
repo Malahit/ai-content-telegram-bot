@@ -77,7 +77,7 @@ class ImageFetcher:
         
         # No API keys configured or all failed
         if not self.pexels_key and not self.pixabay_key:
-            error_msg = "No image API keys configured"
+            error_msg = "Image API keys not configured"
             logger.error(error_msg)
             return [], error_msg
         
@@ -146,16 +146,74 @@ class ImageFetcher:
 
 
 class ImageCache:
-    """Simple image cache (placeholder for future implementation)"""
+    """Simple image cache with SQLite backend"""
     
     def __init__(self, db_path: str = "image_cache.db", ttl_hours: int = 48):
         self.db_path = db_path
         self.ttl_hours = ttl_hours
+        self._init_db()
+    
+    def _init_db(self):
+        """Initialize SQLite database for caching"""
+        import sqlite3
+        from datetime import datetime
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS image_cache (
+                keyword TEXT PRIMARY KEY,
+                image_urls TEXT,
+                cached_at TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
     
     def cache_images(self, keyword: str, image_urls: List[str]):
         """Cache images for a keyword"""
-        pass
+        import sqlite3
+        from datetime import datetime
+        import json
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        urls_json = json.dumps(image_urls)
+        cached_at = datetime.now().isoformat()
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO image_cache (keyword, image_urls, cached_at)
+            VALUES (?, ?, ?)
+        """, (keyword, urls_json, cached_at))
+        
+        conn.commit()
+        conn.close()
     
     def get_cached_images(self, keyword: str) -> Optional[List[str]]:
         """Get cached images for a keyword"""
-        return None
+        import sqlite3
+        from datetime import datetime, timedelta
+        import json
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT image_urls, cached_at FROM image_cache WHERE keyword = ?
+        """, (keyword,))
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return None
+        
+        urls_json, cached_at_str = result
+        cached_at = datetime.fromisoformat(cached_at_str)
+        
+        # Check if cache is still valid
+        if datetime.now() - cached_at > timedelta(hours=self.ttl_hours):
+            return None
+        
+        return json.loads(urls_json)

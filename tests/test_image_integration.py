@@ -11,7 +11,7 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from image_fetcher import ImageFetcher
+from services.image_fetcher import ImageFetcher
 import aiohttp
 
 
