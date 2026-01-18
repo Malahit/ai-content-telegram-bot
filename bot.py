@@ -70,7 +70,7 @@ config_info = config.get_safe_config_info()
 logger.info(f"Configuration loaded: {config_info}")
 logger.info(f"RAG Status: {'ENABLED' if rag_service.is_enabled() else 'DISABLED'}")
 logger.info(f"Translation Status: {'ENABLED' if translation_service.is_enabled() else 'DISABLED'}")
-logger.info(f"🖼️ Images: {'ON' if config.pexels_api_key else 'OFF'}")
+logger.info(f"🖼️ Pexels: {'ON' if config.pexels_api_key else 'OFF'}")
 logger.info(f"Statistics Status: {'ENABLED' if STATS_ENABLED else 'DISABLED'}")
 logger.info(f"Admin Users: {len(ADMIN_USER_IDS)}")
 
