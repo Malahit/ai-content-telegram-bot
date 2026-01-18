@@ -416,6 +416,9 @@ async def generate_command(message: types.Message):
                     logger.error(f"⚠️ Error sending image: {e}")
                     # Fallback to text-only post
                     await message.answer(content, parse_mode="HTML")
+                    # Record text-only post for failed image send
+                    if STATS_ENABLED and stats_tracker:
+                        stats_tracker.record_post(user_id, topic[:50], "text")
                     return
         except Exception as e:
             logger.error(f"⚠️ Error fetching image: {e}")
@@ -423,6 +426,9 @@ async def generate_command(message: types.Message):
     
     # Send text-only post (either no images available or error occurred)
     await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
+    # Record text-only post
+    if STATS_ENABLED and stats_tracker:
+        stats_tracker.record_post(user_id, topic[:50], "text")
 
 
 @dp.message(PostGeneration.waiting_for_topic)

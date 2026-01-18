@@ -4,6 +4,9 @@ Supports fallback between providers and basic caching.
 """
 import aiohttp
 import logging
+import sqlite3
+import json
+from datetime import datetime, timedelta
 from typing import List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
@@ -155,9 +158,6 @@ class ImageCache:
     
     def _init_db(self):
         """Initialize SQLite database for caching"""
-        import sqlite3
-        from datetime import datetime
-        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         cursor.execute("""
@@ -172,10 +172,6 @@ class ImageCache:
     
     def cache_images(self, keyword: str, image_urls: List[str]):
         """Cache images for a keyword"""
-        import sqlite3
-        from datetime import datetime
-        import json
-        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
@@ -192,10 +188,6 @@ class ImageCache:
     
     def get_cached_images(self, keyword: str) -> Optional[List[str]]:
         """Get cached images for a keyword"""
-        import sqlite3
-        from datetime import datetime, timedelta
-        import json
-        
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
