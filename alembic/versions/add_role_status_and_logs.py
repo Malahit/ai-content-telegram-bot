@@ -28,7 +28,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
         sa.Column('user_id', sa.BigInteger(), nullable=False),
         sa.Column('action', sa.String(length=500), nullable=False),
-        sa.Column('timestamp', sa.DateTime(), nullable=False),
+        sa.Column('timestamp', sa.DateTime(), nullable=False, server_default=sa.text('CURRENT_TIMESTAMP')),
         sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_logs_user_id'), 'logs', ['user_id'], unique=False)

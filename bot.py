@@ -378,7 +378,7 @@ async def list_users(message: types.Message):
         await message.answer("🚫 <b>У вас нет прав администратора.</b>")
         return
     
-    users = await user_service.get_all_users(limit=50)
+    users = await user_service.get_all_users(limit=30)
     
     if not users:
         await message.answer("📋 <b>Нет зарегистрированных пользователей</b>")
@@ -415,6 +415,11 @@ async def ban_user_command(message: types.Message):
         target_user_id = int(args[1])
     except ValueError:
         await message.answer("❌ <b>Некорректный ID пользователя</b>")
+        return
+    
+    # Prevent self-ban
+    if target_user_id == user_id:
+        await message.answer("❌ <b>Вы не можете заблокировать себя</b>")
         return
     
     # Ban user
@@ -487,6 +492,11 @@ async def set_role_command(message: types.Message):
             return
         
         new_role = UserRole[role_str]
+        
+        # Prevent self-demotion from admin
+        if target_user_id == user_id and new_role != UserRole.ADMIN:
+            await message.answer("❌ <b>Вы не можете изменить свою роль администратора</b>")
+            return
     except ValueError:
         await message.answer("❌ <b>Некорректный ID пользователя</b>")
         return
@@ -522,8 +532,8 @@ async def view_logs_command(message: types.Message):
             await message.answer("❌ <b>Некорректный ID пользователя</b>")
             return
     
-    # Get logs
-    logs = await user_service.get_logs(telegram_id=target_user_id, limit=20)
+    # Get logs (reduced to 15 to avoid message length issues)
+    logs = await user_service.get_logs(telegram_id=target_user_id, limit=15)
     
     if not logs:
         await message.answer("📋 <b>Логи отсутствуют</b>")
@@ -532,10 +542,11 @@ async def view_logs_command(message: types.Message):
     logs_text = f"<b>📋 Логи</b>{f' для пользователя {target_user_id}' if target_user_id else ''}:\n\n"
     for log in logs:
         timestamp = log.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        # Action is already sanitized when stored, no need to sanitize again
         logs_text += (
             f"<b>{timestamp}</b>\n"
             f"   User: <code>{log.user_id}</code>\n"
-            f"   Action: {user_service.sanitize_for_log(log.action)}\n\n"
+            f"   Action: {log.action}\n\n"
         )
     
     await message.answer(logs_text)
@@ -577,7 +588,7 @@ async def user_info_command(message: types.Message):
         f"<b>👤 Информация о пользователе</b>\n\n"
         f"<b>ID:</b> <code>{user.telegram_id}</code>\n"
         f"<b>Имя:</b> {user_service.sanitize_for_log(name)}\n"
-        f"<b>Username:</b> {username}\n"
+        f"<b>Username:</b> {user_service.sanitize_for_log(username)}\n"
         f"<b>Роль:</b> {user.role.value}\n"
         f"<b>Статус:</b> {user.status.value}\n"
         f"<b>Premium:</b> {'✅ Да' if user.is_premium else '❌ Нет'}\n"
@@ -612,9 +623,12 @@ async def generate_post(message: types.Message, state: FSMContext):
     data = await state.get_data()
     post_type = data.get("post_type", "text")
     
+    # Sanitize topic for HTML output
+    safe_topic_display = user_service.sanitize_for_log(topic)
+    
     rag_marker = ' +RAG' if rag_service.is_enabled() else ''
     await message.answer(
-        f"<b>🔄 Генерирую</b> пост про <i>{topic}</i>{rag_marker}... ⏳10-20с"
+        f"<b>🔄 Генерирую</b> пост про <i>{safe_topic_display}</i>{rag_marker}... ⏳10-20с"
     )
     
     # Generate content
