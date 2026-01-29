@@ -27,6 +27,11 @@ from api_client import api_client, PerplexityAPIError
 from translation_service import translation_service
 from rag_service import rag_service
 
+# Import database and user management
+from database.database import init_db
+from database.models import UserRole, UserStatus
+from services import user_service
+
 # Import statistics and image fetcher from main
 try:
     from bot_statistics import stats_tracker
@@ -213,12 +218,33 @@ async def start_handler(message: types.Message):
     """
     Handle /start command.
     
-    Sends welcome message with bot information and usage instructions.
+    Registers new users, checks ban status, and sends welcome message.
     
     Args:
         message: Incoming message
     """
-    logger.info(f"User {message.from_user.id} started the bot")
+    user_id = message.from_user.id
+    username = message.from_user.username
+    first_name = message.from_user.first_name
+    last_name = message.from_user.last_name
+    
+    logger.info(f"User {user_id} started the bot")
+    
+    # Register or get user
+    await user_service.register_or_get_user(
+        telegram_id=user_id,
+        username=username,
+        first_name=first_name,
+        last_name=last_name
+    )
+    
+    # Check if user is banned
+    if await user_service.is_user_banned(user_id):
+        await message.answer(
+            "🚫 <b>Ваш аккаунт заблокирован.</b>\n\n"
+            "Обратитесь к администратору для разблокировки."
+        )
+        return
     
     rag_status = "✅ RAG" if rag_service.is_enabled() else "⚠️ Без RAG"
     translate_status = "🌐 RU/EN" if translation_service.is_enabled() else ""
@@ -322,6 +348,250 @@ async def menu_handler(message: types.Message, state: FSMContext):
         await message.answer(report)
 
 
+# ==================== Admin Commands ====================
+
+@dp.message(Command("admin"))
+async def admin_panel(message: types.Message):
+    """Admin panel - show admin commands"""
+    user_id = message.from_user.id
+    if not await user_service.is_user_admin(user_id):
+        await message.answer("🚫 <b>У вас нет прав администратора.</b>")
+        return
+    
+    await message.answer(
+        "<b>👑 Панель администратора</b>\n\n"
+        "<b>Доступные команды:</b>\n"
+        "/users - Список всех пользователей\n"
+        "/ban &lt;user_id&gt; - Заблокировать пользователя\n"
+        "/unban &lt;user_id&gt; - Разблокировать пользователя\n"
+        "/setrole &lt;user_id&gt; &lt;role&gt; - Изменить роль (admin/user/guest)\n"
+        "/logs [user_id] - Просмотр логов\n"
+        "/userinfo &lt;user_id&gt; - Информация о пользователе"
+    )
+
+
+@dp.message(Command("users"))
+async def list_users(message: types.Message):
+    """List all users (admin only)"""
+    user_id = message.from_user.id
+    if not await user_service.is_user_admin(user_id):
+        await message.answer("🚫 <b>У вас нет прав администратора.</b>")
+        return
+    
+    users = await user_service.get_all_users(limit=50)
+    
+    if not users:
+        await message.answer("📋 <b>Нет зарегистрированных пользователей</b>")
+        return
+    
+    users_text = "<b>👥 Список пользователей:</b>\n\n"
+    for user in users:
+        role_emoji = "👑" if user.role == UserRole.ADMIN else "👤" if user.role == UserRole.USER else "👻"
+        status_emoji = "✅" if user.status == UserStatus.ACTIVE else "🚫"
+        name = user.first_name or user.username or f"ID: {user.telegram_id}"
+        users_text += (
+            f"{role_emoji} {status_emoji} <b>{user_service.sanitize_for_log(name)}</b>\n"
+            f"   ID: <code>{user.telegram_id}</code> | Role: {user.role.value} | Status: {user.status.value}\n\n"
+        )
+    
+    await message.answer(users_text)
+
+
+@dp.message(Command("ban"))
+async def ban_user_command(message: types.Message):
+    """Ban a user (admin only)"""
+    user_id = message.from_user.id
+    if not await user_service.is_user_admin(user_id):
+        await message.answer("🚫 <b>У вас нет прав администратора.</b>")
+        return
+    
+    # Parse command arguments
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("❌ <b>Использование:</b> /ban &lt;user_id&gt;")
+        return
+    
+    try:
+        target_user_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ <b>Некорректный ID пользователя</b>")
+        return
+    
+    # Ban user
+    success = await user_service.update_user_status(
+        telegram_id=target_user_id,
+        new_status=UserStatus.BANNED,
+        admin_id=user_id
+    )
+    
+    if success:
+        await message.answer(f"✅ <b>Пользователь {target_user_id} заблокирован</b>")
+    else:
+        await message.answer(f"❌ <b>Не удалось заблокировать пользователя {target_user_id}</b>")
+
+
+@dp.message(Command("unban"))
+async def unban_user_command(message: types.Message):
+    """Unban a user (admin only)"""
+    user_id = message.from_user.id
+    if not await user_service.is_user_admin(user_id):
+        await message.answer("🚫 <b>У вас нет прав администратора.</b>")
+        return
+    
+    # Parse command arguments
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("❌ <b>Использование:</b> /unban &lt;user_id&gt;")
+        return
+    
+    try:
+        target_user_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ <b>Некорректный ID пользователя</b>")
+        return
+    
+    # Unban user
+    success = await user_service.update_user_status(
+        telegram_id=target_user_id,
+        new_status=UserStatus.ACTIVE,
+        admin_id=user_id
+    )
+    
+    if success:
+        await message.answer(f"✅ <b>Пользователь {target_user_id} разблокирован</b>")
+    else:
+        await message.answer(f"❌ <b>Не удалось разблокировать пользователя {target_user_id}</b>")
+
+
+@dp.message(Command("setrole"))
+async def set_role_command(message: types.Message):
+    """Set user role (admin only)"""
+    user_id = message.from_user.id
+    if not await user_service.is_user_admin(user_id):
+        await message.answer("🚫 <b>У вас нет прав администратора.</b>")
+        return
+    
+    # Parse command arguments
+    args = message.text.split()
+    if len(args) < 3:
+        await message.answer("❌ <b>Использование:</b> /setrole &lt;user_id&gt; &lt;role&gt;\n<b>Роли:</b> admin, user, guest")
+        return
+    
+    try:
+        target_user_id = int(args[1])
+        role_str = args[2].upper()
+        
+        # Validate role
+        if role_str not in ['ADMIN', 'USER', 'GUEST']:
+            await message.answer("❌ <b>Некорректная роль.</b> Доступные: admin, user, guest")
+            return
+        
+        new_role = UserRole[role_str]
+    except ValueError:
+        await message.answer("❌ <b>Некорректный ID пользователя</b>")
+        return
+    
+    # Set role
+    success = await user_service.update_user_role(
+        telegram_id=target_user_id,
+        new_role=new_role,
+        admin_id=user_id
+    )
+    
+    if success:
+        await message.answer(f"✅ <b>Роль пользователя {target_user_id} изменена на {new_role.value}</b>")
+    else:
+        await message.answer(f"❌ <b>Не удалось изменить роль пользователя {target_user_id}</b>")
+
+
+@dp.message(Command("logs"))
+async def view_logs_command(message: types.Message):
+    """View logs (admin only)"""
+    user_id = message.from_user.id
+    if not await user_service.is_user_admin(user_id):
+        await message.answer("🚫 <b>У вас нет прав администратора.</b>")
+        return
+    
+    # Parse command arguments
+    args = message.text.split()
+    target_user_id = None
+    if len(args) >= 2:
+        try:
+            target_user_id = int(args[1])
+        except ValueError:
+            await message.answer("❌ <b>Некорректный ID пользователя</b>")
+            return
+    
+    # Get logs
+    logs = await user_service.get_logs(telegram_id=target_user_id, limit=20)
+    
+    if not logs:
+        await message.answer("📋 <b>Логи отсутствуют</b>")
+        return
+    
+    logs_text = f"<b>📋 Логи</b>{f' для пользователя {target_user_id}' if target_user_id else ''}:\n\n"
+    for log in logs:
+        timestamp = log.timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        logs_text += (
+            f"<b>{timestamp}</b>\n"
+            f"   User: <code>{log.user_id}</code>\n"
+            f"   Action: {user_service.sanitize_for_log(log.action)}\n\n"
+        )
+    
+    await message.answer(logs_text)
+
+
+@dp.message(Command("userinfo"))
+async def user_info_command(message: types.Message):
+    """Get user information (admin only)"""
+    user_id = message.from_user.id
+    if not await user_service.is_user_admin(user_id):
+        await message.answer("🚫 <b>У вас нет прав администратора.</b>")
+        return
+    
+    # Parse command arguments
+    args = message.text.split()
+    if len(args) < 2:
+        await message.answer("❌ <b>Использование:</b> /userinfo &lt;user_id&gt;")
+        return
+    
+    try:
+        target_user_id = int(args[1])
+    except ValueError:
+        await message.answer("❌ <b>Некорректный ID пользователя</b>")
+        return
+    
+    # Get user info
+    user = await user_service.get_user(target_user_id)
+    
+    if not user:
+        await message.answer(f"❌ <b>Пользователь {target_user_id} не найден</b>")
+        return
+    
+    name = user.first_name or user.username or "N/A"
+    username = f"@{user.username}" if user.username else "N/A"
+    created = user.created_at.strftime("%Y-%m-%d %H:%M:%S")
+    updated = user.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+    
+    user_info = (
+        f"<b>👤 Информация о пользователе</b>\n\n"
+        f"<b>ID:</b> <code>{user.telegram_id}</code>\n"
+        f"<b>Имя:</b> {user_service.sanitize_for_log(name)}\n"
+        f"<b>Username:</b> {username}\n"
+        f"<b>Роль:</b> {user.role.value}\n"
+        f"<b>Статус:</b> {user.status.value}\n"
+        f"<b>Premium:</b> {'✅ Да' if user.is_premium else '❌ Нет'}\n"
+        f"<b>Зарегистрирован:</b> {created}\n"
+        f"<b>Обновлён:</b> {updated}"
+    )
+    
+    await message.answer(user_info)
+
+
+# ==================== End Admin Commands ====================
+
+
+
 @dp.message(PostGeneration.waiting_for_topic)
 async def generate_post(message: types.Message, state: FSMContext):
     """
@@ -353,6 +623,13 @@ async def generate_post(message: types.Message, state: FSMContext):
     # Track statistics
     if STATS_ENABLED:
         stats_tracker.record_post(user_id, topic, post_type)
+    
+    # Log user action
+    safe_topic = user_service.sanitize_for_log(topic)
+    await user_service.add_log(
+        telegram_id=user_id,
+        action=f"Generated post: '{safe_topic}' (type: {post_type})"
+    )
     
     if post_type == "images" and IMAGES_ENABLED:
         # Fetch images for the post
@@ -447,8 +724,16 @@ async def on_startup():
     """
     Bot startup function.
     
-    Configures and starts the autoposter scheduler.
+    Initializes database and configures the autoposter scheduler.
     """
+    # Initialize database
+    try:
+        await init_db()
+        logger.info("✅ Database initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+        raise
+    
     # Image fetcher is ready (API keys loaded during initialization)
     if IMAGES_ENABLED and image_fetcher:
         logger.info("Image fetcher ready with Pexels/Pixabay APIs")
