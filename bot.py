@@ -606,10 +606,11 @@ async def user_info_command(message: types.Message):
 @dp.message(PostGeneration.waiting_for_topic)
 async def generate_post(message: types.Message, state: FSMContext):
     """
-    Handle user text messages and generate content.
+    Handle user text messages and generate content with Pexels photo integration.
     
     Takes user's topic and generates a post using AI with optional RAG context.
-    Can generate text-only or posts with images based on FSM state.
+    Uses Perplexity to generate both text and a keyword for photo search.
+    Fetches photo from Pexels and sends with caption, or falls back to text-only.
     
     Args:
         message: Incoming message with topic
@@ -631,41 +632,71 @@ async def generate_post(message: types.Message, state: FSMContext):
         f"<b>🔄 Генерирую</b> пост про <i>{safe_topic_display}</i>{rag_marker}... ⏳10-20с"
     )
     
-    # Generate content
-    content = await generate_content(topic)
+    # Get RAG context if available
+    rag_context, rag_info = rag_service.get_context(topic)
     
-    # Track statistics
-    if STATS_ENABLED:
-        stats_tracker.record_post(user_id, topic, post_type)
-    
-    # Log user action
-    safe_topic = user_service.sanitize_for_log(topic)
-    await user_service.add_log(
-        telegram_id=user_id,
-        action=f"Generated post: '{safe_topic}' (type: {post_type})"
-    )
-    
-    if post_type == "images" and IMAGES_ENABLED:
-        # Fetch images for the post
-        await message.answer("🖼️ Ищу подходящие изображения...")
+    try:
+        # Generate content with keyword using Perplexity API
+        content, photo_keyword = await api_client.generate_content_with_keyword(topic, rag_context)
         
-        try:
-            # Fetch image using Pexels/Pixabay API - max 1 image for user posts
-            image_urls = await image_fetcher.fetch_images(topic, num_images=1)
-            image_url = image_urls[0] if image_urls and len(image_urls) > 0 else ""
+        # Sanitize content to remove citation artifacts and URLs
+        content = sanitize_content(content)
+        logger.debug(f"Content sanitized, length: {len(content)}, photo keyword: '{photo_keyword}'")
+        
+        # Apply translation if enabled
+        if translation_service.is_enabled():
+            translated, lang = await translation_service.detect_and_translate(content)
+            content = translation_service.add_language_marker(translated, lang)
+        
+        # Add RAG info if available
+        if rag_info:
+            content = f"{content}{rag_info}"
+        
+        # Track statistics
+        if STATS_ENABLED:
+            stats_tracker.record_post(user_id, topic, post_type)
+        
+        # Log user action
+        safe_topic = user_service.sanitize_for_log(topic)
+        await user_service.add_log(
+            telegram_id=user_id,
+            action=f"Generated post: '{safe_topic}' (type: {post_type})"
+        )
+        
+        # Always try to fetch photo with Pexels using the keyword from Perplexity
+        if IMAGES_ENABLED and image_fetcher:
+            await message.answer("🖼️ Ищу фото...")
             
-            # Send photo with caption or fallback to text
-            if image_url:
-                logger.info(f"[Recorded] Image post for user {user_id}, topic: {topic}")
-                await message.answer_photo(photo=image_url, caption=content[:TELEGRAM_CAPTION_MAX_LENGTH], parse_mode="HTML")
-            else:
-                await message.answer(content, parse_mode="HTML")
-        except Exception as e:
-            logger.error(f"Error fetching images for '{topic}' (user {user_id}): {e}", exc_info=True)
-            await message.answer(content, parse_mode="HTML")
-    else:
-        # Text-only post
-        await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}")
+            try:
+                # Fetch image using keyword from Perplexity
+                image_urls = await image_fetcher.fetch_images(photo_keyword, num_images=1)
+                image_url = image_urls[0] if image_urls and len(image_urls) > 0 else ""
+                
+                # Send photo with caption or fallback to text
+                if image_url:
+                    logger.info(f"✅ Sending photo with caption for user {user_id}, keyword: '{photo_keyword}'")
+                    await message.answer_photo(
+                        photo=image_url, 
+                        caption=content[:TELEGRAM_CAPTION_MAX_LENGTH], 
+                        parse_mode="HTML"
+                    )
+                else:
+                    logger.warning(f"No photo found for keyword '{photo_keyword}', fallback to text")
+                    await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}", parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Error fetching photo for '{photo_keyword}' (user {user_id}): {e}", exc_info=True)
+                # Fallback to text-only
+                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}", parse_mode="HTML")
+        else:
+            # No image fetcher available - text-only
+            await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}", parse_mode="HTML")
+        
+    except PerplexityAPIError as e:
+        logger.error(f"Content generation failed: {e}")
+        await message.answer(f"❌ Не удалось сгенерировать контент. Попробуйте позже.")
+    except Exception as e:
+        logger.error(f"Unexpected error during content generation: {e}", exc_info=True)
+        await message.answer(f"❌ Произошла ошибка. Пожалуйста, попробуйте снова.")
     
     # Clear state
     await state.clear()
