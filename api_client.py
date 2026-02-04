@@ -174,17 +174,18 @@ KEYWORD: <single keyword>"""
             full_response = data["choices"][0]["message"]["content"]
             
             # Extract keyword from response
-            keyword_match = re.search(r'KEYWORD:\s*(\w+)', full_response, re.IGNORECASE)
+            keyword_match = re.search(r'KEYWORD:\s*([^\n]+)', full_response, re.IGNORECASE)
             if keyword_match:
                 keyword = keyword_match.group(1).strip()
                 # Remove the keyword line from content
-                content = re.sub(r'\n*KEYWORD:\s*\w+\s*$', '', full_response, flags=re.IGNORECASE).strip()
+                content = re.sub(r'\n*KEYWORD:\s*[^\n]+\s*$', '', full_response, flags=re.IGNORECASE).strip()
             else:
-                # Fallback: use topic as keyword if pattern not found
+                # Fallback: extract meaningful keyword from topic
                 content = full_response
-                # Extract first significant word from topic
-                words = topic.split()
-                keyword = words[0] if words else "abstract"
+                # Filter out common stop words and get first meaningful word
+                stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with'}
+                words = [w for w in topic.split() if w.lower() not in stop_words and len(w) > 2]
+                keyword = words[0] if words else topic.split()[0] if topic.split() else "abstract"
             
             logger.info(f"Generated content with keyword: '{keyword}' for topic: '{topic}'")
             return content, keyword

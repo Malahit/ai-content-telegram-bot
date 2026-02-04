@@ -632,10 +632,10 @@ async def generate_post(message: types.Message, state: FSMContext):
         f"<b>🔄 Генерирую</b> пост про <i>{safe_topic_display}</i>{rag_marker}... ⏳10-20с"
     )
     
-    # Get RAG context if available
-    rag_context, rag_info = rag_service.get_context(topic)
-    
     try:
+        # Get RAG context if available
+        rag_context, rag_info = rag_service.get_context(topic)
+        
         # Generate content with keyword using Perplexity API
         content, photo_keyword = await api_client.generate_content_with_keyword(topic, rag_context)
         
