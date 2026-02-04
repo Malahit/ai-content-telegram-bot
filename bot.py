@@ -637,11 +637,11 @@ async def generate_post(message: types.Message, state: FSMContext):
         rag_context, rag_info = rag_service.get_context(topic)
         
         # Generate content with keyword using Perplexity API
-        content, photo_keyword = await api_client.generate_content_with_keyword(topic, rag_context)
+        content, search_keyword = await api_client.generate_content_with_keyword(topic, rag_context)
         
         # Sanitize content to remove citation artifacts and URLs
         content = sanitize_content(content)
-        logger.debug(f"Content sanitized, length: {len(content)}, photo keyword: '{photo_keyword}'")
+        logger.debug(f"Content sanitized, length: {len(content)}, search keyword: '{search_keyword}'")
         
         # Apply translation if enabled
         if translation_service.is_enabled():
@@ -669,22 +669,22 @@ async def generate_post(message: types.Message, state: FSMContext):
             
             try:
                 # Fetch image using keyword from Perplexity
-                image_urls = await image_fetcher.fetch_images(photo_keyword, num_images=1)
+                image_urls = await image_fetcher.fetch_images(search_keyword, num_images=1)
                 image_url = image_urls[0] if image_urls and len(image_urls) > 0 else ""
                 
                 # Send photo with caption or fallback to text
                 if image_url:
-                    logger.info(f"✅ Sending photo with caption for user {user_id}, keyword: '{photo_keyword}'")
+                    logger.info(f"✅ Sending photo with caption for user {user_id}, keyword: '{search_keyword}'")
                     await message.answer_photo(
                         photo=image_url, 
                         caption=content[:TELEGRAM_CAPTION_MAX_LENGTH], 
                         parse_mode="HTML"
                     )
                 else:
-                    logger.warning(f"No photo found for keyword '{photo_keyword}', fallback to text")
+                    logger.warning(f"No photo found for keyword '{search_keyword}', fallback to text")
                     await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}", parse_mode="HTML")
             except Exception as e:
-                logger.error(f"Error fetching photo for '{photo_keyword}' (user {user_id}): {e}", exc_info=True)
+                logger.error(f"Error fetching photo for '{search_keyword}' (user {user_id}): {e}", exc_info=True)
                 # Fallback to text-only
                 await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}", parse_mode="HTML")
         else:

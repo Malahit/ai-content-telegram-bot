@@ -12,6 +12,10 @@ from config import config
 from logger_config import logger
 
 
+# Common stop words for keyword extraction
+STOP_WORDS = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'is', 'are', 'was', 'were'}
+
+
 class PerplexityAPIError(Exception):
     """Custom exception for Perplexity API errors."""
     pass
@@ -31,7 +35,11 @@ class APIClient:
     
     def generate_content(self, topic: str, rag_context: Optional[str] = None, max_tokens: Optional[int] = None) -> str:
         """
-        Generate content for a topic using Perplexity API (synchronous).
+        Generate content for a topic using Perplexity API.
+        
+        This is a synchronous wrapper around the async implementation.
+        Uses asyncio.run_until_complete to execute the async method.
+        Should not be called from async code - use generate_content_async instead.
         
         Args:
             topic: Topic to generate content about
@@ -183,9 +191,14 @@ KEYWORD: <single keyword>"""
                 # Fallback: extract meaningful keyword from topic
                 content = full_response
                 # Filter out common stop words and get first meaningful word
-                stop_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with'}
-                words = [w for w in topic.split() if w.lower() not in stop_words and len(w) > 2]
-                keyword = words[0] if words else topic.split()[0] if topic.split() else "abstract"
+                topic_words = topic.split()
+                meaningful_words = [w for w in topic_words if w.lower() not in STOP_WORDS and len(w) > 2]
+                if meaningful_words:
+                    keyword = meaningful_words[0]
+                elif topic_words:
+                    keyword = topic_words[0]
+                else:
+                    keyword = "abstract"
             
             logger.info(f"Generated content with keyword: '{keyword}' for topic: '{topic}'")
             return content, keyword
