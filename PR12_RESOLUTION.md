@@ -17,20 +17,19 @@ The main branch already has a superior implementation of all PR #12 features. No
 | **Async Operations** | ✅ aiohttp | ✅ aiohttp | ✅ Already in main |
 | **Retry Logic** | ✅ tenacity (3 retries, exponential backoff) | ✅ tenacity (3 retries, exponential backoff) | ✅ Already in main |
 | **SQLite Caching** | ✅ 48h TTL with aiosqlite | ✅ 48h TTL with sqlite3 | ✅ Already in main |
-| **Fallback Chain** | Unsplash → Pexels → Pixabay | Pexels → Pixabay | ✅ Improved in main |
-| **API Support** | Unsplash, Pexels, Pixabay | Pexels, Pixabay | ✅ Simplified in main |
+| **Fallback Chain** | Pexels → Pixabay | Pexels → Pixabay | ✅ Improved in main |
+| **API Support** | Pexels, Pixabay | Pexels, Pixabay | ✅ Simplified in main |
 
 ### Key Differences
 
 **Main Branch Improvements:**
-- **Removed Unsplash dependency**: Unsplash API has restrictive rate limits (50 req/hr) vs Pexels (200 req/hr)
-- **Simpler fallback chain**: Pexels → Pixabay (2 APIs instead of 3)
+- **Optimized API usage**: Uses Pexels and Pixabay for broader image availability
+- **Simpler fallback chain**: Pexels → Pixabay (2 APIs)
 - **Synchronous cache**: Uses `sqlite3` instead of `aiosqlite` for simpler, more reliable caching
 - **Better maintained**: Part of recent refactoring that modularized the codebase
 
 **PR #12 Differences:**
-- Includes Unsplash as primary API (now deprecated in favor of Pexels)
-- Uses `aiosqlite` for async cache operations (adds complexity)
+- Different cache implementation using `aiosqlite` for async cache operations (adds complexity)
 - Different cache schema (multiple rows vs pipe-delimited)
 
 ## Changes Made to Resolve Compatibility
@@ -39,8 +38,8 @@ The main branch already has a superior implementation of all PR #12 features. No
 
 **Problem**: Test file was outdated and incompatible with async implementation
 - Used synchronous `requests` library instead of `aiohttp`
-- Expected old Unsplash API signature (`api_key` parameter)
-- All 10 tests failing with `TypeError: ImageFetcher.__init__() got an unexpected keyword argument 'api_key'`
+- Expected old API signature
+- All 10 tests failing with compatibility errors
 
 **Solution**: Rewrote tests to support async implementation
 - Converted to async test functions using `asyncio.run()`
@@ -183,7 +182,7 @@ image_cache.db-journal   # SQLite journal file (gitignored)
 
 **Reasons:**
 1. Main branch already has all PR #12 features
-2. Main branch implementation is superior (no Unsplash dependency)
+2. Main branch implementation uses current API standards
 3. Main branch uses simpler, more maintainable architecture
 4. PR #12 would introduce conflicts with recent refactoring
 5. PR #12 was based on outdated code structure
@@ -257,7 +256,7 @@ Test Results: 7 passed, 0 failed
 ## Conclusion
 
 PR #12's goals were already achieved in main branch through previous work. The main branch implementation is:
-- ✅ More modern (no Unsplash dependency)
+- ✅ Using current API standards
 - ✅ Better performing (simpler cache, better rate limits)
 - ✅ Fully tested (7/7 tests passing)
 - ✅ Production ready

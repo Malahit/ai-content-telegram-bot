@@ -105,7 +105,7 @@ npm run lint
 - [ ] Displays loading indicator while fetching data
 - [ ] Shows list of clothing items in a FlatList
 - [ ] Each item shows:
-  - [ ] Image from Unsplash placeholder
+  - [ ] Image from placeholder service
   - [ ] Item name
   - [ ] Category
   - [ ] Price
@@ -132,10 +132,10 @@ npm run lint
 - [ ] Uses axios for HTTP requests
 
 ### ✅ Images
-- [ ] Uses Unsplash placeholders: `https://source.unsplash.com/...`
+- [ ] Uses picsum.photos placeholders for demo purposes
 - [ ] Home screen images: 300x200 pixels
 - [ ] Detail screen images: 400x300 pixels
-- [ ] Images include category and fashion keywords
+- [ ] Images are randomly generated based on item ID
 
 ## Mock Data Structure
 
@@ -212,7 +212,7 @@ The implementation is considered successful when:
 3. ✅ `App.js` implements navigation between Home and Detail screens
 4. ✅ Home screen uses FlatList and axios to fetch/display clothes
 5. ✅ Detail screen shows item details
-6. ✅ Unsplash placeholders are used for images
+6. ✅ Placeholder images are configured in config.js
 7. ✅ App runs on Android/iOS emulator
 8. ✅ All Jest tests pass
 9. ✅ GitHub workflow is configured for CI/CD

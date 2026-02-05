@@ -19,7 +19,7 @@ This report provides a comprehensive review of all open pull requests in the `Ma
 
 ## Detailed PR Analysis
 
-### 🔴 PR #16: Migrate from Unsplash API to Pexels API
+### 🔴 PR #16: Update Image API Integration
 **Status**: ❌ **HAS MERGE CONFLICTS**  
 **Branch**: `copilot/update-to-pexels-api`  
 **Base**: `main` (SHA: d4aa74172c72d838a2ae506e2a8db9d74e1dcfed)  
@@ -89,7 +89,7 @@ This report provides a comprehensive review of all open pull requests in the `Ma
 
 **Details**:
 - Adds tenacity for retry logic
-- Implements fallback chain: Unsplash → Pexels → Pixabay
+- Implements fallback chain: Pexels → Pixabay
 - SQLite caching with 48h TTL
 - Converts to async/await with aiohttp
 

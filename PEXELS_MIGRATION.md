@@ -2,18 +2,18 @@
 
 ## ✅ Migration Complete
 
-The bot has been successfully migrated from Unsplash API to Pexels API for image generation.
+The bot has been successfully configured to use Pexels API for image generation.
 
 ## What Changed
 
 ### API Changes
-- **Old**: Unsplash API (`UNSPLASH_API_KEY`)
-- **New**: Pexels API (`PEXELS_API_KEY`)
+- **Primary**: Pexels API (`PEXELS_API_KEY`)
+- **Fallback**: Pixabay API (`PIXABAY_API_KEY`)
 
-### Rate Limits Improvement
-- **Old**: 50 requests/hour (Unsplash free tier)
-- **New**: 200 requests/hour (Pexels free tier)
-- **Benefit**: 4x more capacity for image generation
+### Rate Limits
+- **Pexels**: 200 requests/hour (free tier)
+- **Pixabay**: Unlimited (free tier)
+- **Benefit**: High capacity for image generation with reliable fallback
 
 ### Code Changes
 1. **image_fetcher.py**: Completely rewritten for Pexels API
@@ -46,21 +46,22 @@ The bot has been successfully migrated from Unsplash API to Pexels API for image
 1. Go to your Render dashboard
 2. Select your service
 3. Go to "Environment" tab
-4. **Remove** old variable:
-   - `UNSPLASH_API_KEY` (delete this)
-5. **Add** new variable:
+4. **Add** required variable:
    - Key: `PEXELS_API_KEY`
    - Value: `your_pexels_api_key_here`
+5. **Optional** fallback variable:
+   - Key: `PIXABAY_API_KEY`
+   - Value: `your_pixabay_api_key_here`
 6. Save changes
 
 #### For local development:
 Update your `.env` file:
 ```bash
-# Remove this line:
-# UNSPLASH_API_KEY=...
-
-# Add this line:
+# Required for image generation
 PEXELS_API_KEY=your_pexels_api_key_here
+
+# Optional fallback
+PIXABAY_API_KEY=your_pixabay_api_key_here
 ```
 
 ### 3. Deploy
@@ -129,19 +130,17 @@ After deployment, test the following:
 
 ## Rollback Plan (if needed)
 
-If you need to rollback to Unsplash:
-1. Checkout previous commit before migration
-2. Restore `UNSPLASH_API_KEY` environment variable
-3. Redeploy
+The current implementation uses Pexels as the primary API with Pixabay as fallback. This provides a reliable image generation service with high rate limits and good availability.
 
 ## Benefits Summary
 
-✅ **Better rate limits**: 200 vs 50 requests/hour
+✅ **Better rate limits**: 200 requests/hour (Pexels)
 ✅ **More reliable**: Pexels has better uptime
 ✅ **Better image quality**: High-quality stock photos
 ✅ **Free forever**: No credit card required
 ✅ **Simple API**: Easier to work with
 ✅ **Good documentation**: Easy to debug
+✅ **Reliable fallback**: Pixabay as secondary source
 
 ## Support
 

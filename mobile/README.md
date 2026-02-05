@@ -6,7 +6,7 @@ This is a React Native mobile application for browsing clothing items from the A
 
 - **Home Screen**: Displays a list of clothing items fetched from the API
 - **Detail Screen**: Shows detailed information about a selected clothing item
-- **Mock Images**: Uses Unsplash placeholder images for clothing items
+- **Mock Images**: Uses picsum.photos placeholder images for clothing items
 - **Navigation**: Implements React Navigation for seamless screen transitions
 
 ## Prerequisites
