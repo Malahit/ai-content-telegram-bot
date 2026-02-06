@@ -44,8 +44,8 @@ class ShutdownManager:
         Handle SIGTERM signal for graceful shutdown.
         
         This function is called when SIGTERM is received. It initiates
-        the shutdown process by scheduling the async shutdown coroutine
-        and then exits cleanly.
+        the shutdown process by scheduling the async shutdown coroutine,
+        allows time for cleanup, and then exits cleanly.
         
         Args:
             signum: Signal number
@@ -56,14 +56,25 @@ class ShutdownManager:
         
         # Schedule shutdown in the event loop if available
         if self._loop and self._loop.is_running():
-            asyncio.run_coroutine_threadsafe(self.shutdown(), self._loop)
-            # Give the loop some time to process the shutdown
-            self._loop.call_later(1.0, self._loop.stop)
+            # Schedule the shutdown coroutine
+            future = asyncio.run_coroutine_threadsafe(self.shutdown(), self._loop)
+            
+            # Wait for shutdown to complete (with timeout)
+            try:
+                future.result(timeout=5.0)
+                logger.info("✅ Shutdown completed successfully")
+            except TimeoutError:
+                logger.warning("⚠️ Shutdown timed out, forcing exit")
+            except Exception as e:
+                logger.error(f"❌ Error during shutdown: {e}")
+            
+            # Stop the event loop to allow the finally block to execute
+            self._loop.stop()
         else:
             # If no loop is available, just log and exit
             logger.info("🛑 No event loop available, performing immediate shutdown")
         
-        # Exit cleanly
+        # Exit cleanly - this will allow atexit handlers to run
         logger.info("✅ Exiting process")
         sys.exit(0)
     
