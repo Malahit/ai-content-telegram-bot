@@ -798,6 +798,11 @@ async def auto_post():
     
     try:
         content = await generate_content(topic)
+        
+        # Apply HTML sanitization to prevent TelegramBadRequest errors
+        safe_content = safe_html(content)
+        logger.debug(f"Autopost HTML sanitized: {len(content)}→{len(safe_content)} chars")
+        
         post_prefix = f"<b>🤖 Автопост {random.randint(1,999)}:</b>\n\n"
         
         if include_images:
@@ -813,13 +818,17 @@ async def auto_post():
                         logger.debug(f"Autopost image {i+1}/{len(image_urls)}: {url}")
                         if i == 0:
                             # Add caption to first image
-                            media.append(InputMediaPhoto(media=url, caption=f"{post_prefix}{content}"))
+                            media.append(InputMediaPhoto(media=url, caption=f"{post_prefix}{safe_content}"))
                         else:
                             media.append(InputMediaPhoto(media=url))
                     
-                    await bot.send_media_group(config.channel_id, media)
-                    logger.info(f"✅ Автопост с {len(image_urls)} изображениями опубликован: {topic} → {config.channel_id}")
-                    return
+                    try:
+                        await bot.send_media_group(config.channel_id, media)
+                        logger.info(f"✅ Автопост с {len(image_urls)} изображениями опубликован: {topic} → {config.channel_id}")
+                        return
+                    except TelegramBadRequest as e:
+                        logger.warning(f"HTML parse error in autopost media caption, falling back to text-only: {e}")
+                        # Continue to text-only fallback
                 else:
                     logger.warning(f"No images found for autopost '{topic}': {error_msg}. Falling back to text-only.")
             except Exception as e:
@@ -827,11 +836,18 @@ async def auto_post():
                 logger.error(f"Autopost fallback to text-only due to image error")
         
         # Send text-only (either by choice or fallback)
-        await bot.send_message(
-            config.channel_id,
-            f"{post_prefix}{content}"
-        )
-        logger.info(f"✅ Автопост (текст) успешно опубликован: {topic} → {config.channel_id}")
+        try:
+            await bot.send_message(
+                config.channel_id,
+                f"{post_prefix}{safe_content}"
+            )
+            logger.info(f"✅ Автопост (текст) успешно опубликован: {topic} → {config.channel_id}")
+        except TelegramBadRequest as e:
+            logger.warning(f"HTML parse error in autopost, falling back to plain text: {e}")
+            await bot.send_message(
+                config.channel_id,
+                f"🤖 Автопост {random.randint(1,999)}:\n\n{safe_content}"
+            )
     except Exception as e:
         logger.error(f"❌ Ошибка автопоста: {e}", exc_info=True)
 
