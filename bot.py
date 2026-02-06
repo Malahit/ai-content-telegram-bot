@@ -34,6 +34,9 @@ from database.database import init_db
 from database.models import UserRole, UserStatus
 from services import user_service
 
+# Import utils for instance management
+from utils import InstanceLock, shutdown_manager, PollingManager
+
 # Import statistics and image fetcher from main
 try:
     from bot_statistics import stats_tracker
@@ -88,6 +91,9 @@ bot = Bot(
     default=DefaultBotProperties(parse_mode=ParseMode.HTML)
 )
 dp = Dispatcher(storage=MemoryStorage())
+
+# Global scheduler instance
+scheduler: Optional[AsyncIOScheduler] = None
 
 # FSM States for post generation
 class PostGeneration(StatesGroup):
@@ -862,6 +868,8 @@ async def on_startup():
     
     Initializes database and configures the autoposter scheduler.
     """
+    global scheduler
+    
     # Initialize database
     try:
         await init_db()
@@ -884,22 +892,99 @@ async def on_startup():
     logger.info(
         f"🚀 Автопостинг запущен: каждые {config.autopost_interval_hours}ч → {config.channel_id}"
     )
+    
+    # Register shutdown callbacks
+    shutdown_manager.register_callback(on_shutdown)
+    shutdown_manager.register_signals()
+
+
+async def on_shutdown():
+    """
+    Bot shutdown function.
+    
+    Cleans up resources including scheduler, API client, and RAG observer.
+    """
+    global scheduler
+    
+    logger.info("🛑 Shutting down bot resources...")
+    
+    # Stop scheduler
+    if scheduler and scheduler.running:
+        scheduler.shutdown(wait=False)
+        logger.info("✅ Scheduler stopped")
+    
+    # Close API client
+    try:
+        if hasattr(api_client, 'close'):
+            await api_client.close()
+            logger.info("✅ API client closed")
+    except Exception as e:
+        logger.warning(f"⚠️ Error closing API client: {e}")
+    
+    # Stop RAG observer
+    try:
+        if rag_service.is_enabled() and hasattr(rag_service, 'stop_observer'):
+            await rag_service.stop_observer()
+            logger.info("✅ RAG observer stopped")
+    except Exception as e:
+        logger.warning(f"⚠️ Error stopping RAG observer: {e}")
+    
+    # Close bot session
+    try:
+        await bot.session.close()
+        logger.info("✅ Bot session closed")
+    except Exception as e:
+        logger.warning(f"⚠️ Error closing bot session: {e}")
+    
+    logger.info("✅ Shutdown complete")
 
 
 async def main():
     """
     Main entry point.
     
-    Starts the bot and begins polling for updates.
+    Starts the bot and begins polling for updates with instance locking
+    and retry logic for conflict handling.
     """
+    # Acquire instance lock
+    instance_lock = InstanceLock()
+    if not instance_lock.acquire():
+        logger.error("❌ Failed to acquire instance lock. Exiting.")
+        return
+    
     logger.info("=" * 60)
     logger.info("✅ BOT v2.2 PRODUCTION READY!")
     logger.info("=" * 60)
     logger.info(f"🔑 PEXELS_API_KEY доступен: {bool(config.pexels_api_key)}")
     logger.info(f"🔑 PIXABAY_API_KEY доступен: {bool(config.pixabay_api_key)}")
     
-    await on_startup()
-    await dp.start_polling(bot)
+    try:
+        await on_startup()
+        
+        # Create polling manager with retry logic
+        polling_manager = PollingManager(
+            max_retries=5,
+            initial_delay=5.0,
+            max_delay=300.0,
+            backoff_factor=2.0
+        )
+        
+        # Start polling with automatic retry on conflicts
+        await polling_manager.start_polling_with_retry(
+            dp,
+            bot,
+            on_conflict_callback=lambda: logger.warning(
+                "💡 Conflict detected. Ensure no other instances are running."
+            )
+        )
+    except KeyboardInterrupt:
+        logger.info("⚠️ Received keyboard interrupt")
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}", exc_info=True)
+    finally:
+        # Ensure cleanup happens
+        await shutdown_manager.shutdown()
+        instance_lock.release()
 
 
 if __name__ == "__main__":

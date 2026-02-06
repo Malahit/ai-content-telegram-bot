@@ -4,6 +4,9 @@ __pycache__/
 *.рус
 *$py.class
 
+# Instance lock file
+*.lock
+
 # Environments
 .env
 .venv/
