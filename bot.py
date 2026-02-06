@@ -8,10 +8,13 @@ Supports optional RAG (Retrieval-Augmented Generation), translation, and image g
 import asyncio
 import random
 import re
+from html import escape
 from typing import Optional
 
+from bs4 import BeautifulSoup
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart, Command
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
@@ -159,6 +162,51 @@ def sanitize_content(content: str) -> str:
     content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
     
     return content.strip()
+
+
+def safe_html(content: str) -> str:
+    """
+    Sanitize HTML content for safe Telegram display.
+    
+    Removes or unwraps unsupported HTML tags and attributes to prevent
+    TelegramBadRequest errors from malformed tags like <1>, <2>, etc.
+    
+    Telegram supports only these HTML tags:
+    <b>, <i>, <u>, <s>, <code>, <pre>, <a>, <strong>, <em>
+    
+    Args:
+        content: Raw HTML content that may contain unsupported tags
+        
+    Returns:
+        Sanitized HTML content safe for Telegram
+    """
+    # First, remove invalid tags like <1>, <2>, <123>, etc. before BeautifulSoup processing
+    # This prevents them from being HTML-escaped
+    content = re.sub(r'</?(\d+)[^>]*>', '', content)
+    
+    # Parse the content with BeautifulSoup
+    soup = BeautifulSoup(content, 'html.parser')
+    
+    # Allowed tags for Telegram HTML formatting
+    allowed_tags = ['b', 'i', 'u', 's', 'code', 'pre', 'a', 'strong', 'em']
+    
+    # Remove or unwrap unsupported tags
+    for tag in soup.find_all(True):
+        if tag.name not in allowed_tags:
+            # Unwrap the tag (keep content, remove tag)
+            tag.unwrap()
+        elif tag.name == 'a':
+            # For anchor tags, keep only href attribute
+            tag.attrs = {'href': tag.get('href', '#')}
+    
+    # Convert back to string
+    cleaned = str(soup)
+    
+    # Remove any remaining HTML-like patterns that aren't valid tags
+    # This catches remaining unsupported tags
+    cleaned = re.sub(r'<(?![/]?(?:b|i|u|s|code|pre|a|strong|em)(?:\s|>))[^>]*>', '', cleaned)
+    
+    return cleaned
 
 
 async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
@@ -652,6 +700,10 @@ async def generate_post(message: types.Message, state: FSMContext):
         if rag_info:
             content = f"{content}{rag_info}"
         
+        # Apply HTML sanitization to prevent TelegramBadRequest errors
+        safe_content = safe_html(content)
+        logger.debug(f"HTML sanitized: {len(content)}→{len(safe_content)} chars")
+        
         # Track statistics
         if STATS_ENABLED:
             stats_tracker.record_post(user_id, topic, post_type)
@@ -675,21 +727,40 @@ async def generate_post(message: types.Message, state: FSMContext):
                 # Send photo with caption or fallback to text
                 if image_url:
                     logger.info(f"✅ Sending photo with caption for user {user_id}, keyword: '{search_keyword}'")
-                    await message.answer_photo(
-                        photo=image_url, 
-                        caption=content[:TELEGRAM_CAPTION_MAX_LENGTH], 
-                        parse_mode="HTML"
-                    )
+                    try:
+                        await message.answer_photo(
+                            photo=image_url, 
+                            caption=safe_content[:TELEGRAM_CAPTION_MAX_LENGTH], 
+                            parse_mode="HTML"
+                        )
+                    except TelegramBadRequest as e:
+                        logger.warning(f"HTML parse error in photo caption, falling back to plain text: {e}")
+                        await message.answer_photo(
+                            photo=image_url, 
+                            caption=safe_content[:TELEGRAM_CAPTION_MAX_LENGTH]
+                        )
                 else:
                     logger.warning(f"No photo found for keyword '{search_keyword}', fallback to text")
-                    await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}", parse_mode="HTML")
+                    try:
+                        await message.answer(f"<b>✨ Готовый пост:</b>\n\n{safe_content}", parse_mode="HTML")
+                    except TelegramBadRequest as e:
+                        logger.warning(f"HTML parse error, falling back to plain text: {e}")
+                        await message.answer(f"✨ Готовый пост:\n\n{safe_content}")
             except Exception as e:
                 logger.error(f"Error fetching photo for '{search_keyword}' (user {user_id}): {e}", exc_info=True)
                 # Fallback to text-only
-                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}", parse_mode="HTML")
+                try:
+                    await message.answer(f"<b>✨ Готовый пост:</b>\n\n{safe_content}", parse_mode="HTML")
+                except TelegramBadRequest as e:
+                    logger.warning(f"HTML parse error, falling back to plain text: {e}")
+                    await message.answer(f"✨ Готовый пост:\n\n{safe_content}")
         else:
             # No image fetcher available - text-only
-            await message.answer(f"<b>✨ Готовый пост:</b>\n\n{content}", parse_mode="HTML")
+            try:
+                await message.answer(f"<b>✨ Готовый пост:</b>\n\n{safe_content}", parse_mode="HTML")
+            except TelegramBadRequest as e:
+                logger.warning(f"HTML parse error, falling back to plain text: {e}")
+                await message.answer(f"✨ Готовый пост:\n\n{safe_content}")
         
     except PerplexityAPIError as e:
         logger.error(f"Content generation failed: {e}")

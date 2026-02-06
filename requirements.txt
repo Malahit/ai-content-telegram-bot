@@ -8,6 +8,7 @@ openai==1.109.1  # Для Perplexity compatibility
 tenacity>=8.1.0,<9.0.0  # For retry logic (compatible with langchain)
 aiohttp==3.13.3  # For async HTTP requests
 httpx>=0.27.0  # For Perplexity API client
+beautifulsoup4==4.12.3  # For HTML sanitization
 
 # Database
 sqlalchemy==2.0.25

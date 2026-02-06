@@ -2,6 +2,7 @@
 Test content sanitization functionality
 """
 import re
+from bs4 import BeautifulSoup
 
 def sanitize_content(content: str) -> str:
     """Clean generated content by removing citation artifacts and URLs."""
@@ -14,6 +15,41 @@ def sanitize_content(content: str) -> str:
     content = re.sub(r'\s+([.,!?])', r'\1', content)
     content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
     return content.strip()
+
+def safe_html(content: str) -> str:
+    """
+    Sanitize HTML content for safe Telegram display.
+    
+    Removes or unwraps unsupported HTML tags and attributes to prevent
+    TelegramBadRequest errors from malformed tags like <1>, <2>, etc.
+    """
+    # First, remove invalid tags like <1>, <2>, <123>, etc. before BeautifulSoup processing
+    # This prevents them from being HTML-escaped
+    content = re.sub(r'</?(\d+)[^>]*>', '', content)
+    
+    # Parse the content with BeautifulSoup
+    soup = BeautifulSoup(content, 'html.parser')
+    
+    # Allowed tags for Telegram HTML formatting
+    allowed_tags = ['b', 'i', 'u', 's', 'code', 'pre', 'a', 'strong', 'em']
+    
+    # Remove or unwrap unsupported tags
+    for tag in soup.find_all(True):
+        if tag.name not in allowed_tags:
+            # Unwrap the tag (keep content, remove tag)
+            tag.unwrap()
+        elif tag.name == 'a':
+            # For anchor tags, keep only href attribute
+            tag.attrs = {'href': tag.get('href', '#')}
+    
+    # Convert back to string
+    cleaned = str(soup)
+    
+    # Remove any remaining HTML-like patterns that aren't valid tags
+    # This catches remaining unsupported tags
+    cleaned = re.sub(r'<(?![/]?(?:b|i|u|s|code|pre|a|strong|em)(?:\s|>))[^>]*>', '', cleaned)
+    
+    return cleaned
 
 def test_sanitization():
     tests = [
@@ -32,5 +68,32 @@ def test_sanitization():
     
     print("\n✅ All sanitization tests passed!")
 
+def test_html_sanitization():
+    """Test HTML sanitization for Telegram-safe output"""
+    tests = [
+        # Test malformed tags like <1>, <2>
+        ("This is <1>text</1> with bad tags", "This is text with bad tags"),
+        # OL/LI tags are unwrapped, content is preserved
+        ("List: <ol><li>1. Item</li></ol>", "List: 1. Item"),
+        # Test allowed tags
+        ("This is <b>bold</b> text", "This is <b>bold</b> text"),
+        ("This is <i>italic</i> and <u>underlined</u>", "This is <i>italic</i> and <u>underlined</u>"),
+        # Test unsupported tags - should be unwrapped
+        ("Text with <div>div</div> and <span>span</span>", "Text with div and span"),
+        ("Text with <h1>heading</h1>", "Text with heading"),
+        # Test links
+        ('<a href="https://example.com">link</a>', '<a href="https://example.com">link</a>'),
+        # Test mixed content
+        ("Text <1>with</1> <b>bold</b> and <div>div</div>", "Text with <b>bold</b> and div"),
+    ]
+    
+    for i, (input_text, expected) in enumerate(tests, 1):
+        result = safe_html(input_text)
+        assert result == expected, f"HTML Test {i} failed: got '{result}', expected '{expected}'"
+        print(f"✅ HTML Test {i} passed")
+    
+    print("\n✅ All HTML sanitization tests passed!")
+
 if __name__ == "__main__":
     test_sanitization()
+    test_html_sanitization()
