@@ -14,7 +14,7 @@ export const API_CONFIG = {
 };
 
 // Placeholder image service
-// Using picsum.photos as a reliable alternative to deprecated Unsplash Source API
+// Using picsum.photos as a reliable alternative to deprecated PEXELS API
 export const IMAGE_CONFIG = {
   // Base URL for placeholder images
   BASE_URL: 'https://picsum.photos',
