@@ -55,9 +55,13 @@ def is_another_instance_running() -> bool:
                     # Use basename and specific patterns to avoid false positives
                     basename = os.path.basename(arg).lower()
                     # Match python, python2, python3, python2.7, python3.11, etc.
-                    if basename in ('python', 'python2', 'python3') or \
-                       (basename.startswith('python') and len(basename) > 6 and basename[6] in '.0123456789'):
+                    # The basename should be exactly 'python' or start with 'python' followed by a digit or dot
+                    if basename == 'python' or basename == 'python2' or basename == 'python3':
                         is_python = True
+                    elif basename.startswith('python') and len(basename) > 6:
+                        # Check if what follows 'python' is a version number (digit or dot)
+                        if basename[6] in '.0123456789':
+                            is_python = True
                     
                     # Check if the argument is our specific bot script
                     # We need to match ONLY bot.py or main.py, not robot.py or domain.py
