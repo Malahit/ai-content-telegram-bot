@@ -8,6 +8,7 @@ Supports optional RAG (Retrieval-Augmented Generation), translation, and image g
 import asyncio
 import random
 import re
+import sys
 from typing import Optional
 
 from bs4 import BeautifulSoup
@@ -35,7 +36,7 @@ from database.models import UserRole, UserStatus
 from services import user_service
 
 # Import utils for instance management
-from utils import InstanceLock, shutdown_manager, PollingManager
+from utils import InstanceLock, is_another_instance_running, shutdown_manager, PollingManager
 
 # Import statistics and image fetcher from main
 try:
@@ -946,11 +947,16 @@ async def main():
     Starts the bot and begins polling for updates with instance locking
     and retry logic for conflict handling.
     """
+    # Check for other running instances using psutil
+    if is_another_instance_running():
+        logger.error("❌ Another bot instance is already running. Exiting.")
+        sys.exit(1)
+    
     # Acquire instance lock
     instance_lock = InstanceLock()
     if not instance_lock.acquire():
         logger.error("❌ Failed to acquire instance lock. Exiting.")
-        return
+        sys.exit(1)
     
     logger.info("=" * 60)
     logger.info("✅ BOT v2.2 PRODUCTION READY!")

@@ -12,6 +12,96 @@ import atexit
 import tempfile
 from pathlib import Path
 from logger_config import logger
+import psutil
+
+
+def is_another_instance_running() -> bool:
+    """
+    Check if another instance of bot.py or main.py is already running using psutil.
+    
+    This function scans all running processes to detect if any other instance
+    of bot.py or main.py is running (excluding the current process).
+    
+    Returns:
+        bool: True if another bot.py or main.py instance is detected, False otherwise
+    """
+    current_pid = os.getpid()
+    logger.info(f"🔍 Checking for other running instances (current PID: {current_pid})")
+    
+    bot_instances = []
+    
+    try:
+        # Iterate through all running processes
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                # Skip the current process
+                if proc.pid == current_pid:
+                    continue
+                
+                # Get process command line
+                cmdline = proc.info.get('cmdline')
+                if not cmdline:
+                    continue
+                
+                # Check if this is a Python process running bot.py or main.py
+                # We look for:
+                # 1. The process must be running with python interpreter OR executed via shebang
+                # 2. The script name must be bot.py or main.py (as the actual script argument)
+                is_python = False
+                has_bot_script = False
+                
+                for i, arg in enumerate(cmdline):
+                    # Check if this is a Python interpreter
+                    # Use basename and specific patterns to avoid false positives
+                    basename = os.path.basename(arg).lower()
+                    # Match python, python2, python3, python2.7, python3.11, etc.
+                    # The basename should be exactly 'python' or start with 'python' followed by a digit or dot
+                    if basename == 'python' or basename == 'python2' or basename == 'python3':
+                        is_python = True
+                    elif basename.startswith('python') and len(basename) >= 7:
+                        # Check if what follows 'python' is a version number (digit or dot)
+                        if basename[6] in '.0123456789':
+                            is_python = True
+                    
+                    # Check if the argument is our specific bot script
+                    # We need to match ONLY bot.py or main.py, not robot.py or domain.py
+                    arg_basename = os.path.basename(arg)
+                    if arg_basename in ('bot.py', 'main.py'):
+                        # Valid cases:
+                        # - i == 0: shebang execution (./bot.py, /path/to/bot.py)
+                        # - i > 0: executed with python (python bot.py, python3 /path/to/bot.py)
+                        has_bot_script = True
+                        # Mark as python if it's at position 0 (shebang execution)
+                        if i == 0:
+                            is_python = True
+                
+                if is_python and has_bot_script:
+                    cmdline_str = ' '.join(cmdline)
+                    bot_instances.append({
+                        'pid': proc.pid,
+                        'cmdline': cmdline_str
+                    })
+                    logger.warning(
+                        f"⚠️ Found another bot instance:\n"
+                        f"   PID: {proc.pid}\n"
+                        f"   Command: {cmdline_str}"
+                    )
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                # Process may have terminated or we don't have access
+                continue
+    except Exception as e:
+        logger.error(f"❌ Error checking for running instances: {e}")
+        return False
+    
+    if bot_instances:
+        logger.error(
+            f"❌ Detected {len(bot_instances)} other bot instance(s) running!\n"
+            f"   Please stop the other instance(s) before starting a new one."
+        )
+        return True
+    
+    logger.info("✅ No other bot instances detected")
+    return False
 
 
 class InstanceLock:
