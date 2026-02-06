@@ -7,6 +7,7 @@ when the bot shuts down normally or receives termination signals.
 
 import asyncio
 import signal
+import sys
 from typing import Optional, Callable, List
 from logger_config import logger
 
@@ -25,6 +26,7 @@ class ShutdownManager:
         self.shutdown_callbacks: List[Callable] = []
         self.shutdown_event = asyncio.Event()
         self._signals_registered = False
+        self._loop = None  # Store event loop reference for signal handling
     
     def register_callback(self, callback: Callable):
         """
@@ -37,40 +39,62 @@ class ShutdownManager:
             self.shutdown_callbacks.append(callback)
             logger.debug(f"Registered shutdown callback: {callback.__name__}")
     
+    def shutdown_gracefully(self, signum, frame):
+        """
+        Handle SIGTERM signal for graceful shutdown.
+        
+        This function is called when SIGTERM is received. It initiates
+        the shutdown process by scheduling the async shutdown coroutine
+        and then exits cleanly.
+        
+        Args:
+            signum: Signal number
+            frame: Current stack frame
+        """
+        signal_name = signal.Signals(signum).name
+        logger.info(f"⚠️ Received {signal_name}, initiating graceful shutdown...")
+        
+        # Schedule shutdown in the event loop if available
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self.shutdown(), self._loop)
+            # Give the loop some time to process the shutdown
+            self._loop.call_later(1.0, self._loop.stop)
+        else:
+            # If no loop is available, just log and exit
+            logger.info("🛑 No event loop available, performing immediate shutdown")
+        
+        # Exit cleanly
+        logger.info("✅ Exiting process")
+        sys.exit(0)
+    
     def register_signals(self):
         """
-        Register signal handlers for graceful shutdown.
+        Register signal handlers for graceful shutdown using signal.signal.
         
-        Handles SIGTERM and SIGINT signals.
+        Handles SIGTERM and SIGINT signals using the signal library
+        for cross-platform compatibility.
         """
         if self._signals_registered:
             return
         
         try:
-            loop = asyncio.get_event_loop()
+            # Store the event loop reference for use in signal handlers
+            try:
+                self._loop = asyncio.get_event_loop()
+            except RuntimeError:
+                # No event loop in current thread
+                self._loop = None
             
-            for sig in (signal.SIGTERM, signal.SIGINT):
-                loop.add_signal_handler(
-                    sig,
-                    lambda s=sig: asyncio.create_task(self._signal_handler(s))
-                )
+            # Use signal.signal for SIGTERM (cross-platform)
+            signal.signal(signal.SIGTERM, self.shutdown_gracefully)
+            # Also handle SIGINT (Ctrl+C) for consistency
+            signal.signal(signal.SIGINT, self.shutdown_gracefully)
             
             self._signals_registered = True
-            logger.info("✅ Signal handlers registered for graceful shutdown")
-        except NotImplementedError:
-            # Windows doesn't support add_signal_handler
-            logger.warning("⚠️ Signal handlers not available on this platform")
-    
-    async def _signal_handler(self, sig):
-        """
-        Handle termination signals.
-        
-        Args:
-            sig: Signal number
-        """
-        signal_name = signal.Signals(sig).name
-        logger.info(f"⚠️ Received {signal_name}, initiating graceful shutdown...")
-        await self.shutdown()
+            logger.info("✅ Signal handlers registered for graceful shutdown (SIGTERM, SIGINT)")
+        except (ValueError, OSError) as e:
+            # Some systems may not support certain signals
+            logger.warning(f"⚠️ Could not register signal handlers: {e}")
     
     async def shutdown(self):
         """

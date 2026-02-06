@@ -8,11 +8,21 @@ import os
 import sys
 import unittest
 import asyncio
+import signal
+from unittest.mock import patch, MagicMock
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.shutdown_manager import ShutdownManager
+# Import directly to avoid dependency issues
+import importlib.util
+spec = importlib.util.spec_from_file_location(
+    "shutdown_manager",
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "utils", "shutdown_manager.py")
+)
+shutdown_manager_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(shutdown_manager_module)
+ShutdownManager = shutdown_manager_module.ShutdownManager
 
 
 class TestShutdownManager(unittest.TestCase):
@@ -135,6 +145,62 @@ class TestShutdownManager(unittest.TestCase):
         asyncio.run(self.manager.shutdown())
         
         self.assertIn('sync', self.callback_executed)
+    
+    def test_register_signals(self):
+        """Test that signal handlers are registered correctly."""
+        # Should not raise any exceptions
+        self.manager.register_signals()
+        self.assertTrue(self.manager._signals_registered)
+        
+        # Calling again should be idempotent
+        self.manager.register_signals()
+        self.assertTrue(self.manager._signals_registered)
+    
+    @patch('sys.exit')
+    def test_shutdown_gracefully_with_sigterm(self, mock_exit):
+        """Test that shutdown_gracefully handles SIGTERM correctly."""
+        # Create a mock event loop
+        loop = asyncio.new_event_loop()
+        self.manager._loop = loop
+        
+        async def test_callback():
+            self.callback_executed.append('sigterm_test')
+        
+        self.manager.register_callback(test_callback)
+        
+        # Call shutdown_gracefully with SIGTERM
+        with patch.object(loop, 'is_running', return_value=True):
+            with patch('asyncio.run_coroutine_threadsafe') as mock_run:
+                self.manager.shutdown_gracefully(signal.SIGTERM, None)
+                
+                # Verify that shutdown was scheduled
+                mock_run.assert_called_once()
+                # Verify that exit was called
+                mock_exit.assert_called_once_with(0)
+        
+        loop.close()
+    
+    @patch('sys.exit')
+    def test_shutdown_gracefully_without_loop(self, mock_exit):
+        """Test shutdown_gracefully when no event loop is available."""
+        self.manager._loop = None
+        
+        # Should not raise exception, just exit
+        self.manager.shutdown_gracefully(signal.SIGTERM, None)
+        
+        # Verify exit was called
+        mock_exit.assert_called_once_with(0)
+    
+    @patch('sys.exit')
+    def test_shutdown_gracefully_with_sigint(self, mock_exit):
+        """Test that shutdown_gracefully handles SIGINT correctly."""
+        self.manager._loop = None
+        
+        # Call shutdown_gracefully with SIGINT
+        self.manager.shutdown_gracefully(signal.SIGINT, None)
+        
+        # Verify that exit was called
+        mock_exit.assert_called_once_with(0)
 
 
 if __name__ == '__main__':
