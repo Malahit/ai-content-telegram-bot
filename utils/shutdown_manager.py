@@ -44,8 +44,12 @@ class ShutdownManager:
         Handle SIGTERM signal for graceful shutdown.
         
         This function is called when SIGTERM is received. It initiates
-        the shutdown process by scheduling the async shutdown coroutine,
-        allows time for cleanup, and then exits cleanly.
+        the shutdown process and terminates the script cleanly.
+        
+        Note: This function blocks briefly (up to 2 seconds) to allow
+        shutdown callbacks (including scheduler shutdown) to complete.
+        This is necessary to ensure resources are properly freed before
+        the process exits.
         
         Args:
             signum: Signal number
@@ -56,25 +60,23 @@ class ShutdownManager:
         
         # Schedule shutdown in the event loop if available
         if self._loop and self._loop.is_running():
-            # Schedule the shutdown coroutine
+            # Schedule the shutdown coroutine and wait for it to complete
+            # We use a short timeout to avoid hanging indefinitely
             future = asyncio.run_coroutine_threadsafe(self.shutdown(), self._loop)
             
-            # Wait for shutdown to complete (with timeout)
             try:
-                future.result(timeout=5.0)
+                # Wait for shutdown to complete with a 2-second timeout
+                future.result(timeout=2.0)
                 logger.info("✅ Shutdown completed successfully")
             except TimeoutError:
-                logger.warning("⚠️ Shutdown timed out, forcing exit")
+                logger.warning("⚠️ Shutdown timed out after 2 seconds")
             except Exception as e:
                 logger.error(f"❌ Error during shutdown: {e}")
-            
-            # Stop the event loop to allow the finally block to execute
-            self._loop.stop()
         else:
-            # If no loop is available, just log and exit
-            logger.info("🛑 No event loop available, performing immediate shutdown")
+            # If no loop is available, perform immediate exit
+            logger.info("🛑 No event loop available")
         
-        # Exit cleanly - this will allow atexit handlers to run
+        # Exit cleanly - atexit handlers will run
         logger.info("✅ Exiting process")
         sys.exit(0)
     

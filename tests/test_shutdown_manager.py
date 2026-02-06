@@ -14,15 +14,7 @@ from unittest.mock import patch, MagicMock
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Import directly to avoid dependency issues
-import importlib.util
-spec = importlib.util.spec_from_file_location(
-    "shutdown_manager",
-    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "utils", "shutdown_manager.py")
-)
-shutdown_manager_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(shutdown_manager_module)
-ShutdownManager = shutdown_manager_module.ShutdownManager
+from utils.shutdown_manager import ShutdownManager
 
 
 class TestShutdownManager(unittest.TestCase):
