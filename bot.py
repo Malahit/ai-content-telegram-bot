@@ -969,14 +969,12 @@ async def main():
             backoff_factor=2.0
         )
         
+        # Async callback for conflict detection
+        async def on_conflict():
+            logger.warning("💡 Conflict detected. Ensure no other instances are running.")
+        
         # Start polling with automatic retry on conflicts
-        await polling_manager.start_polling_with_retry(
-            dp,
-            bot,
-            on_conflict_callback=lambda: logger.warning(
-                "💡 Conflict detected. Ensure no other instances are running."
-            )
-        )
+        await polling_manager.start_polling_with_retry(dp, bot, on_conflict_callback=on_conflict)
     except KeyboardInterrupt:
         logger.info("⚠️ Received keyboard interrupt")
     except Exception as e:

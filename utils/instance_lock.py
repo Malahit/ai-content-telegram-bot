@@ -9,6 +9,7 @@ import os
 import sys
 import signal
 import atexit
+import tempfile
 from pathlib import Path
 from logger_config import logger
 
@@ -17,18 +18,24 @@ class InstanceLock:
     """
     Manages instance locking using a PID file to prevent multiple bot instances.
     
+    Note: Signal handlers are registered here for cleanup on termination.
+    The ShutdownManager provides additional async cleanup for graceful shutdown.
+    
     Attributes:
         lock_file: Path to the lock file
         pid: Current process ID
     """
     
-    def __init__(self, lock_file: str = "/tmp/telegram_bot.lock"):
+    def __init__(self, lock_file: str = None):
         """
         Initialize the instance lock manager.
         
         Args:
-            lock_file: Path to the lock file (default: /tmp/telegram_bot.lock)
+            lock_file: Path to the lock file. If None, uses cross-platform temp directory
         """
+        if lock_file is None:
+            # Use cross-platform temp directory
+            lock_file = os.path.join(tempfile.gettempdir(), "telegram_bot.lock")
         self.lock_file = Path(lock_file)
         self.pid = os.getpid()
     
@@ -96,9 +103,14 @@ class InstanceLock:
             logger.info(f"✅ Instance lock acquired (PID: {self.pid}, Lock: {self.lock_file})")
             
             # Register cleanup handlers
+            # Note: These signal handlers provide basic cleanup for the lock file.
+            # For full async cleanup, the ShutdownManager should be used alongside this.
             atexit.register(self.release)
-            signal.signal(signal.SIGTERM, self._signal_handler)
-            signal.signal(signal.SIGINT, self._signal_handler)
+            
+            # Only register signal handlers if not on Windows (which doesn't support signal.SIGTERM properly)
+            if sys.platform != 'win32':
+                signal.signal(signal.SIGTERM, self._signal_handler)
+                signal.signal(signal.SIGINT, self._signal_handler)
             
             return True
         except IOError as e:

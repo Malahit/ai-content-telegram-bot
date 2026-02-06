@@ -6,7 +6,7 @@ from temporary issues with multiple bot instances.
 """
 
 import asyncio
-from typing import Optional
+from typing import Optional, Callable
 from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramConflictError
 from logger_config import logger
@@ -48,7 +48,7 @@ class PollingManager:
         self,
         dispatcher: Dispatcher,
         bot: Bot,
-        on_conflict_callback: Optional[callable] = None
+        on_conflict_callback: Optional[Callable] = None
     ):
         """
         Start polling with automatic retry on conflicts.
