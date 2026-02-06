@@ -3,42 +3,28 @@
 Test script to verify is_another_instance_running function.
 
 This script tests the psutil-based instance detection functionality.
+Note: This is a standalone test that duplicates the function implementation
+to avoid dependency issues when testing in isolation. In production, the
+function is imported from utils.instance_lock.
 """
 
 import os
 import sys
-import time
-
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-# Import directly to avoid dependency issues
 import psutil
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'utils'))
 
-# Mock the logger to avoid dependencies
-class MockLogger:
-    def info(self, msg):
-        print(f"[INFO] {msg}")
-    def warning(self, msg):
-        print(f"[WARNING] {msg}")
-    def error(self, msg):
-        print(f"[ERROR] {msg}")
 
-# Create a simple test
 def is_another_instance_running() -> bool:
     """
     Check if another instance of bot.py is already running using psutil.
     
-    This function scans all running processes to detect if any other instance
-    of bot.py is running (excluding the current process).
+    This is a test-only copy of the function for standalone testing.
+    The production version is in utils/instance_lock.py
     
     Returns:
         bool: True if another bot.py instance is detected, False otherwise
     """
     current_pid = os.getpid()
-    logger = MockLogger()
-    logger.info(f"🔍 Checking for other running instances (current PID: {current_pid})")
+    print(f"[INFO] 🔍 Checking for other running instances (current PID: {current_pid})")
     
     bot_instances = []
     
@@ -52,36 +38,50 @@ def is_another_instance_running() -> bool:
                 
                 # Get process command line
                 cmdline = proc.info.get('cmdline')
-                if cmdline:
-                    # Check if bot.py or main.py is in the command line
+                if not cmdline:
+                    continue
+                
+                # Check if this is a Python process running bot.py or main.py
+                is_python = False
+                has_bot_script = False
+                
+                for i, arg in enumerate(cmdline):
+                    # Check if this is a Python interpreter
+                    if 'python' in arg.lower():
+                        is_python = True
+                    
+                    # Check if the argument is our bot script (not just containing the name)
+                    if arg.endswith('bot.py') or arg.endswith('main.py'):
+                        # Verify it's an actual script argument, not just part of a path
+                        if i > 0 or 'python' in cmdline[0].lower():
+                            has_bot_script = True
+                
+                if is_python and has_bot_script:
                     cmdline_str = ' '.join(cmdline)
-                    if 'bot.py' in cmdline_str or 'main.py' in cmdline_str:
-                        # Ensure it's actually running Python with our bot files
-                        if any('python' in arg.lower() for arg in cmdline):
-                            bot_instances.append({
-                                'pid': proc.pid,
-                                'cmdline': cmdline_str
-                            })
-                            logger.warning(
-                                f"⚠️ Found another bot instance:\n"
-                                f"   PID: {proc.pid}\n"
-                                f"   Command: {cmdline_str}"
-                            )
+                    bot_instances.append({
+                        'pid': proc.pid,
+                        'cmdline': cmdline_str
+                    })
+                    print(
+                        f"[WARNING] ⚠️ Found another bot instance:\n"
+                        f"   PID: {proc.pid}\n"
+                        f"   Command: {cmdline_str}"
+                    )
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 # Process may have terminated or we don't have access
                 continue
     except Exception as e:
-        logger.error(f"❌ Error checking for running instances: {e}")
+        print(f"[ERROR] ❌ Error checking for running instances: {e}")
         return False
     
     if bot_instances:
-        logger.error(
-            f"❌ Detected {len(bot_instances)} other bot instance(s) running!\n"
+        print(
+            f"[ERROR] ❌ Detected {len(bot_instances)} other bot instance(s) running!\n"
             f"   Please stop the other instance(s) before starting a new one."
         )
         return True
     
-    logger.info("✅ No other bot instances detected")
+    print("[INFO] ✅ No other bot instances detected")
     return False
 
 
