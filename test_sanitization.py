@@ -39,8 +39,13 @@ def safe_html(content: str) -> str:
             # Unwrap the tag (keep content, remove tag)
             tag.unwrap()
         elif tag.name == 'a':
-            # For anchor tags, keep only href attribute
-            tag.attrs = {'href': tag.get('href', '#')}
+            # For anchor tags, unwrap if no valid href attribute
+            href = tag.get('href', '')
+            if not href or href == '#':
+                tag.unwrap()
+            else:
+                # Keep only href attribute for valid links
+                tag.attrs = {'href': href}
     
     # Convert back to string
     cleaned = str(soup)
@@ -81,10 +86,15 @@ def test_html_sanitization():
         # Test unsupported tags - should be unwrapped
         ("Text with <div>div</div> and <span>span</span>", "Text with div and span"),
         ("Text with <h1>heading</h1>", "Text with heading"),
-        # Test links
+        # Test links - valid links preserved, invalid unwrapped
         ('<a href="https://example.com">link</a>', '<a href="https://example.com">link</a>'),
+        ('<a>link without href</a>', 'link without href'),
+        ('<a href="#">link with # href</a>', 'link with # href'),
         # Test mixed content
         ("Text <1>with</1> <b>bold</b> and <div>div</div>", "Text with <b>bold</b> and div"),
+        # Test nested tags - valid tags inside invalid tags should be preserved
+        ("<1><b>bold text</b></1>", "<b>bold text</b>"),
+        ("<div><i>italic</i> and <u>underline</u></div>", "<i>italic</i> and <u>underline</u>"),
     ]
     
     for i, (input_text, expected) in enumerate(tests, 1):

@@ -8,7 +8,6 @@ Supports optional RAG (Retrieval-Augmented Generation), translation, and image g
 import asyncio
 import random
 import re
-from html import escape
 from typing import Optional
 
 from bs4 import BeautifulSoup
@@ -196,8 +195,13 @@ def safe_html(content: str) -> str:
             # Unwrap the tag (keep content, remove tag)
             tag.unwrap()
         elif tag.name == 'a':
-            # For anchor tags, keep only href attribute
-            tag.attrs = {'href': tag.get('href', '#')}
+            # For anchor tags, unwrap if no valid href attribute
+            href = tag.get('href', '')
+            if not href or href == '#':
+                tag.unwrap()
+            else:
+                # Keep only href attribute for valid links
+                tag.attrs = {'href': href}
     
     # Convert back to string
     cleaned = str(soup)
