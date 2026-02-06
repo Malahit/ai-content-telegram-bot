@@ -52,16 +52,19 @@ def is_another_instance_running() -> bool:
                 
                 for i, arg in enumerate(cmdline):
                     # Check if this is a Python interpreter
-                    # Use basename to avoid false positives from paths containing 'python'
-                    basename = os.path.basename(arg)
-                    if basename.lower().startswith('python'):
+                    # Use basename and specific patterns to avoid false positives
+                    basename = os.path.basename(arg).lower()
+                    # Match python, python2, python3, python2.7, python3.11, etc.
+                    if basename in ('python', 'python2', 'python3') or \
+                       (basename.startswith('python') and len(basename) > 6 and basename[6] in '.0123456789'):
                         is_python = True
                     
-                    # Check if the argument is our bot script
-                    # Match patterns like: bot.py, ./bot.py, /path/to/bot.py, /path/to/main.py
-                    if arg.endswith('bot.py') or arg.endswith('main.py'):
+                    # Check if the argument is our specific bot script
+                    # We need to match ONLY bot.py or main.py, not robot.py or domain.py
+                    arg_basename = os.path.basename(arg)
+                    if arg_basename in ('bot.py', 'main.py'):
                         # Valid cases:
-                        # - i == 0: shebang execution (./bot.py)
+                        # - i == 0: shebang execution (./bot.py, /path/to/bot.py)
                         # - i > 0: executed with python (python bot.py, python3 /path/to/bot.py)
                         has_bot_script = True
                         # Mark as python if it's at position 0 (shebang execution)
