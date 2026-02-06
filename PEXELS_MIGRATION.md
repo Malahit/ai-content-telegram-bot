@@ -7,12 +7,10 @@ The bot has been successfully migrated from Unsplash API to Pexels API for image
 ## What Changed
 
 ### API Changes
-- **Old**: Unsplash API (`UNSPLASH_API_KEY`)
-- **New**: Pexels API (`PEXELS_API_KEY`)
+- Pexels API (`PEXELS_API_KEY`)
 
 ### Rate Limits Improvement
-- **Old**: 50 requests/hour (Unsplash free tier)
-- **New**: 200 requests/hour (Pexels free tier)
+- 200 requests/hour (Pexels free tier)
 - **Benefit**: 4x more capacity for image generation
 
 ### Code Changes
