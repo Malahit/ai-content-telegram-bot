@@ -9,6 +9,7 @@ for running the bot with subscription features.
 import asyncio
 import random
 import re
+import sys
 from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, types
@@ -40,7 +41,7 @@ from services.user_service import is_premium, count_premium, get_user, add_user
 from database.models import User
 
 # Import utils
-from utils import setup_expiration_job, InstanceLock, shutdown_manager, PollingManager
+from utils import setup_expiration_job, InstanceLock, is_another_instance_running, shutdown_manager, PollingManager
 
 # Import statistics and image fetcher from main
 try:
@@ -659,11 +660,16 @@ async def main():
     Starts the bot and begins polling for updates with instance locking
     and retry logic for conflict handling.
     """
+    # Check for other running instances using psutil
+    if is_another_instance_running():
+        logger.error("❌ Another bot instance is already running. Exiting.")
+        sys.exit(1)
+    
     # Acquire instance lock
     instance_lock = InstanceLock()
     if not instance_lock.acquire():
         logger.error("❌ Failed to acquire instance lock. Exiting.")
-        return
+        sys.exit(1)
     
     logger.info("=" * 60)
     logger.info("✅ BOT v3.0 WITH SUBSCRIPTIONS READY!")
