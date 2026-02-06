@@ -45,22 +45,28 @@ def is_another_instance_running() -> bool:
                 
                 # Check if this is a Python process running bot.py or main.py
                 # We look for:
-                # 1. The process must be running with python interpreter
+                # 1. The process must be running with python interpreter OR executed via shebang
                 # 2. The script name must be bot.py or main.py (as the actual script argument)
                 is_python = False
                 has_bot_script = False
                 
                 for i, arg in enumerate(cmdline):
                     # Check if this is a Python interpreter
-                    if 'python' in arg.lower():
+                    # Use basename to avoid false positives from paths containing 'python'
+                    basename = os.path.basename(arg)
+                    if basename.lower().startswith('python'):
                         is_python = True
                     
-                    # Check if the argument is our bot script (not just containing the name)
-                    # Match patterns like: bot.py, ./bot.py, /path/to/bot.py
+                    # Check if the argument is our bot script
+                    # Match patterns like: bot.py, ./bot.py, /path/to/bot.py, /path/to/main.py
                     if arg.endswith('bot.py') or arg.endswith('main.py'):
-                        # Verify it's an actual script argument, not just part of a path
-                        if i > 0 or 'python' in cmdline[0].lower():
-                            has_bot_script = True
+                        # Valid cases:
+                        # - i == 0: shebang execution (./bot.py)
+                        # - i > 0: executed with python (python bot.py, python3 /path/to/bot.py)
+                        has_bot_script = True
+                        # Mark as python if it's at position 0 (shebang execution)
+                        if i == 0:
+                            is_python = True
                 
                 if is_python and has_bot_script:
                     cmdline_str = ' '.join(cmdline)
