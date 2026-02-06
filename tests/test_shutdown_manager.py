@@ -8,6 +8,8 @@ import os
 import sys
 import unittest
 import asyncio
+import signal
+from unittest.mock import patch, MagicMock
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -135,6 +137,51 @@ class TestShutdownManager(unittest.TestCase):
         asyncio.run(self.manager.shutdown())
         
         self.assertIn('sync', self.callback_executed)
+    
+    def test_register_signals(self):
+        """Test that signal handlers are registered correctly."""
+        # Should not raise any exceptions
+        self.manager.register_signals()
+        self.assertTrue(self.manager._signals_registered)
+        
+        # Calling again should be idempotent
+        self.manager.register_signals()
+        self.assertTrue(self.manager._signals_registered)
+    
+    @patch('sys.exit')
+    def test_shutdown_gracefully_with_sigterm(self, mock_exit):
+        """Test that shutdown_gracefully handles SIGTERM correctly."""
+        # Note: This test validates the basic flow, but cannot fully test
+        # the threadsafe execution without a running event loop
+        self.manager._loop = None
+        
+        # Call shutdown_gracefully with SIGTERM
+        self.manager.shutdown_gracefully(signal.SIGTERM, None)
+        
+        # Verify that exit was called
+        mock_exit.assert_called_once_with(0)
+    
+    @patch('sys.exit')
+    def test_shutdown_gracefully_without_loop(self, mock_exit):
+        """Test shutdown_gracefully when no event loop is available."""
+        self.manager._loop = None
+        
+        # Should not raise exception, just exit
+        self.manager.shutdown_gracefully(signal.SIGTERM, None)
+        
+        # Verify exit was called
+        mock_exit.assert_called_once_with(0)
+    
+    @patch('sys.exit')
+    def test_shutdown_gracefully_with_sigint(self, mock_exit):
+        """Test that shutdown_gracefully handles SIGINT correctly."""
+        self.manager._loop = None
+        
+        # Call shutdown_gracefully with SIGINT
+        self.manager.shutdown_gracefully(signal.SIGINT, None)
+        
+        # Verify that exit was called
+        mock_exit.assert_called_once_with(0)
 
 
 if __name__ == '__main__':
