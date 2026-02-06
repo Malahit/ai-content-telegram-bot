@@ -46,25 +46,40 @@ class ShutdownManager:
         This function is called when SIGTERM is received. It initiates
         the shutdown process and terminates the script cleanly.
         
-        Note: This function blocks briefly (up to 2 seconds) to allow
-        shutdown callbacks (including scheduler shutdown) to complete.
-        This is necessary to ensure resources are properly freed before
-        the process exits.
+        **Important**: This function blocks briefly (up to 2 seconds) to allow
+        shutdown callbacks (including scheduler shutdown) to complete before
+        calling sys.exit(). This is necessary to ensure resources are properly
+        freed, as required by the problem specification.
+        
+        **Limitations**: 
+        - Blocking in signal handlers can be problematic if the signal interrupts 
+          certain system calls
+        - This approach assumes the signal is received from outside the process
+        - In rare cases, sys.exit() from a signal handler may cause interpreter 
+          state issues
+        
+        **Rationale**: The design prioritizes resource cleanup over pure signal 
+        handler best practices, as the alternative (non-blocking with flags) 
+        would not guarantee scheduler shutdown before process termination.
         
         Args:
             signum: Signal number
             frame: Current stack frame
         """
-        signal_name = signal.Signals(signum).name
+        # Get signal name safely (Python 3.5+)
+        try:
+            signal_name = signal.Signals(signum).name
+        except (AttributeError, ValueError):
+            signal_name = f"signal {signum}"
+        
         logger.info(f"⚠️ Received {signal_name}, initiating graceful shutdown...")
         
         # Schedule shutdown in the event loop if available
         if self._loop and self._loop.is_running():
             # Schedule the shutdown coroutine and wait for it to complete
             # We use a short timeout to avoid hanging indefinitely
-            future = asyncio.run_coroutine_threadsafe(self.shutdown(), self._loop)
-            
             try:
+                future = asyncio.run_coroutine_threadsafe(self.shutdown(), self._loop)
                 # Wait for shutdown to complete with a 2-second timeout
                 future.result(timeout=2.0)
                 logger.info("✅ Shutdown completed successfully")
