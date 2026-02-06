@@ -15,13 +15,13 @@ import psutil
 
 def is_another_instance_running() -> bool:
     """
-    Check if another instance of bot.py is already running using psutil.
+    Check if another instance of bot.py or main.py is already running using psutil.
     
     This is a test-only copy of the function for standalone testing.
     The production version is in utils/instance_lock.py
     
     Returns:
-        bool: True if another bot.py instance is detected, False otherwise
+        bool: True if another bot.py or main.py instance is detected, False otherwise
     """
     current_pid = os.getpid()
     print(f"[INFO] 🔍 Checking for other running instances (current PID: {current_pid})")
@@ -53,7 +53,7 @@ def is_another_instance_running() -> bool:
                     # The basename should be exactly 'python' or start with 'python' followed by a digit or dot
                     if basename == 'python' or basename == 'python2' or basename == 'python3':
                         is_python = True
-                    elif basename.startswith('python') and len(basename) > 6:
+                    elif basename.startswith('python') and len(basename) >= 7:
                         # Check if what follows 'python' is a version number (digit or dot)
                         if basename[6] in '.0123456789':
                             is_python = True
