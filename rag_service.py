@@ -45,15 +45,29 @@ class RAGService:
             or DEFAULT_EMBEDDINGS_MODEL
         )
         
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name=embeddings_model,
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': False}
-        )
-        self.vectorstore = None
-        self.observer = Observer()
-        self._start_watcher()
-        self._initialize_vectorstore()
+        # Try to initialize embeddings - if it fails, disable RAG gracefully
+        try:
+            self.embeddings = HuggingFaceEmbeddings(
+                model_name=embeddings_model,
+                model_kwargs={'device': 'cpu'},
+                encode_kwargs={'normalize_embeddings': False}
+            )
+            self.vectorstore = None  # Will be set by _initialize_vectorstore
+            self.observer = Observer()
+            self._start_watcher()
+            self._initialize_vectorstore()
+            logger.info("✅ RAG service initialized successfully")
+        except ImportError as e:
+            logger.error(f"❌ RAG service disabled: Missing dependency - {str(e)}")
+            logger.error("💡 Install sentence-transformers package to enable RAG features")
+            self.embeddings = None
+            self.vectorstore = None
+            self.observer = None
+        except Exception as e:
+            logger.error(f"❌ RAG service disabled: Initialization failed - {str(e)}")
+            self.embeddings = None
+            self.vectorstore = None
+            self.observer = None
     
     def _start_watcher(self):
         event_handler = KnowledgeBaseHandler(self)
@@ -143,9 +157,12 @@ class RAGService:
             return None, None
     
     async def stop_observer(self):
-        self.observer.stop()
-        self.observer.join(timeout=5.0)
-        logger.info("🛑 Наблюдение за файловой системой остановлено")
+        if self.observer:
+            self.observer.stop()
+            self.observer.join(timeout=5.0)
+            logger.info("🛑 Наблюдение за файловой системой остановлено")
+        else:
+            logger.debug("🛑 Наблюдатель не инициализирован, нечего останавливать")
 
 
 # Create and export singleton instance
