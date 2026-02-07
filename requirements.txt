@@ -24,4 +24,5 @@ faiss-cpu==1.9.0.post1
 pypdf==5.1.0
 unstructured==0.18.24
 watchdog==3.0.0
+sentence-transformers>=2.2.2
 
