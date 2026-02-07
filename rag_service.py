@@ -52,7 +52,7 @@ class RAGService:
                 model_kwargs={'device': 'cpu'},
                 encode_kwargs={'normalize_embeddings': False}
             )
-            self.vectorstore = None
+            self.vectorstore = None  # Will be set by _initialize_vectorstore
             self.observer = Observer()
             self._start_watcher()
             self._initialize_vectorstore()
@@ -162,7 +162,7 @@ class RAGService:
             self.observer.join(timeout=5.0)
             logger.info("🛑 Наблюдение за файловой системой остановлено")
         else:
-            logger.debug("Observer not initialized, nothing to stop")
+            logger.debug("🛑 Наблюдатель не инициализирован, нечего останавливать")
 
 
 # Create and export singleton instance
