@@ -10,13 +10,18 @@ It checks for:
 """
 
 import ast
+import os
 import sys
 
 
 def validate_rag_service():
     """Validate the RAG service module structure."""
     
-    with open('rag_service.py', 'r') as f:
+    # Get path to rag_service.py relative to this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    rag_service_path = os.path.join(script_dir, '..', 'rag_service.py')
+    
+    with open(rag_service_path, 'r') as f:
         source = f.read()
     
     try:

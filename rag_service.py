@@ -38,10 +38,11 @@ class RAGService:
         os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
         
         # Get embeddings model from config with safe default
-        embeddings_model = getattr(
-            config, 
-            "EMBEDDINGS_MODEL", 
-            os.getenv("EMBEDDINGS_MODEL", DEFAULT_EMBEDDINGS_MODEL)
+        # Handle None/empty values by checking both config and environment
+        embeddings_model = (
+            getattr(config, "EMBEDDINGS_MODEL", None) 
+            or os.getenv("EMBEDDINGS_MODEL") 
+            or DEFAULT_EMBEDDINGS_MODEL
         )
         
         self.embeddings = HuggingFaceEmbeddings(
