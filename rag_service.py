@@ -2,7 +2,7 @@ import os
 import logging
 import threading
 import asyncio
-from typing import List
+from typing import List, Tuple, Optional
 from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import (
     TextLoader, 
@@ -17,6 +17,12 @@ from watchdog.events import FileSystemEventHandler
 from config import config
 from logger_config import logger
 
+# Default embeddings model if not specified in config
+DEFAULT_EMBEDDINGS_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+
+# Knowledge base directory
+KNOWLEDGE_DIR = "./knowledge"
+
 class KnowledgeBaseHandler(FileSystemEventHandler):
     def __init__(self, rag_service):
         self.rag_service = rag_service
@@ -28,8 +34,19 @@ class KnowledgeBaseHandler(FileSystemEventHandler):
 
 class RAGService:
     def __init__(self):
+        # Create knowledge directory if it doesn't exist
+        os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
+        
+        # Get embeddings model from config with safe default
+        # Handle None/empty values by checking both config and environment
+        embeddings_model = (
+            getattr(config, "EMBEDDINGS_MODEL", None) 
+            or os.getenv("EMBEDDINGS_MODEL") 
+            or DEFAULT_EMBEDDINGS_MODEL
+        )
+        
         self.embeddings = HuggingFaceEmbeddings(
-            model_name=config.EMBEDDINGS_MODEL,
+            model_name=embeddings_model,
             model_kwargs={'device': 'cpu'},
             encode_kwargs={'normalize_embeddings': False}
         )
@@ -40,10 +57,10 @@ class RAGService:
     
     def _start_watcher(self):
         event_handler = KnowledgeBaseHandler(self)
-        self.observer.schedule(event_handler, path="./knowledge", recursive=True)
+        self.observer.schedule(event_handler, path=KNOWLEDGE_DIR, recursive=True)
         self.observer_thread = threading.Thread(target=self.observer.start, daemon=True)
         self.observer_thread.start()
-        logger.info("👀 Наблюдение за папкой ./knowledge запущено")
+        logger.info(f"👀 Наблюдение за папкой {KNOWLEDGE_DIR} запущено")
     
     def reload_knowledge_base(self):
         logger.info("⏳ Перезагрузка RAG-базы...")
@@ -55,7 +72,7 @@ class RAGService:
     
     def _initialize_vectorstore(self):
         documents = []
-        for root, _, files in os.walk("./knowledge"):
+        for root, _, files in os.walk(KNOWLEDGE_DIR):
             for file in files:
                 file_path = os.path.join(root, file)
                 try:
@@ -81,14 +98,58 @@ class RAGService:
             self.vectorstore = FAISS.from_documents(documents, self.embeddings)
             logger.info(f"📚 RAG-база загружена. Документов: {len(documents)}")
         else:
-            logger.warning("📁 Папка ./knowledge пуста. RAG-база не инициализирована.")
+            logger.warning(f"📁 Папка {KNOWLEDGE_DIR} пуста. RAG-база не инициализирована.")
     
     async def asearch(self, query: str, k: int = 3) -> List[Document]:
         if not self.vectorstore:
             return []
         return await asyncio.to_thread(self.vectorstore.similarity_search, query, k=k)
     
+    def is_enabled(self) -> bool:
+        """Check if RAG service is enabled and has a vectorstore."""
+        return self.vectorstore is not None
+    
+    async def get_context(self, topic: str) -> Tuple[Optional[str], Optional[str]]:
+        """
+        Get RAG context for a given topic.
+        
+        Args:
+            topic: The topic to search for
+            
+        Returns:
+            A tuple of (rag_context, rag_info) where:
+            - rag_context: The context string for the topic (or None)
+            - rag_info: Additional info about the RAG results (or None)
+        """
+        if not self.is_enabled():
+            return None, None
+        
+        try:
+            # Search for relevant documents
+            docs = await self.asearch(topic, k=3)
+            
+            if not docs:
+                return None, None
+            
+            # Combine document content as context
+            rag_context = "\n\n".join([doc.page_content for doc in docs])
+            
+            # Create info string about the RAG results
+            rag_info = f"\n\n📚 <i>На основе {len(docs)} документов из базы знаний</i>"
+            
+            return rag_context, rag_info
+        except Exception as e:
+            logger.error(f"❌ Ошибка при получении RAG контекста: {str(e)}")
+            return None, None
+    
     async def stop_observer(self):
         self.observer.stop()
         self.observer.join(timeout=5.0)
         logger.info("🛑 Наблюдение за файловой системой остановлено")
+
+
+# Create and export singleton instance
+rag_service = RAGService()
+
+# Define exports
+__all__ = ["rag_service", "RAGService"]

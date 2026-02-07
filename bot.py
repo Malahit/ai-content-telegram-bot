@@ -240,7 +240,7 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
     logger.info(f"Starting content generation for topic: {topic}")
     
     # Get RAG context if available
-    rag_context, rag_info = rag_service.get_context(topic)
+    rag_context, rag_info = await rag_service.get_context(topic)
     
     try:
         # Generate content using API
@@ -693,7 +693,7 @@ async def generate_post(message: types.Message, state: FSMContext):
     
     try:
         # Get RAG context if available
-        rag_context, rag_info = rag_service.get_context(topic)
+        rag_context, rag_info = await rag_service.get_context(topic)
         
         # Generate content with keyword using Perplexity API
         content, search_keyword = await api_client.generate_content_with_keyword(topic, rag_context)
