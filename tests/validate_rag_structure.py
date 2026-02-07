@@ -74,23 +74,23 @@ def validate_rag_service():
                         has_is_enabled_method = True
                         # Verify it has correct signature (self)
                         if len(item.args.args) != 1:
-                            print(f"❌ is_enabled method has wrong signature")
+                            print("❌ is_enabled method has wrong signature")
                             return False
                     
                     if item.name == 'get_context':
                         has_get_context_method = True
                         # Verify it's async and has correct signature (self, topic)
                         if not isinstance(item, ast.AsyncFunctionDef):
-                            print(f"❌ get_context method is not async")
+                            print("❌ get_context method is not async")
                             return False
                         if len(item.args.args) != 2:
-                            print(f"❌ get_context method has wrong signature")
+                            print("❌ get_context method has wrong signature")
                             return False
                     
                     if item.name == 'stop_observer':
                         has_stop_observer_method = True
                         if not isinstance(item, ast.AsyncFunctionDef):
-                            print(f"❌ stop_observer method is not async")
+                            print("❌ stop_observer method is not async")
                             return False
     
     # Report findings
