@@ -15,14 +15,3 @@ psutil>=5.9.0  # For process instance checking
 sqlalchemy==2.0.25
 alembic==1.13.1
 aiosqlite==0.19.0
-
-# RAG
-langchain==0.3.2
-langchain-community==0.3.1
-langchain-openai==0.2.2
-faiss-cpu==1.9.0.post1
-pypdf==5.1.0
-unstructured==0.18.24
-watchdog==3.0.0
-sentence-transformers>=2.2.2
-

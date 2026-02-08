@@ -12,10 +12,23 @@ DEFAULT_EMBEDDINGS_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 # Knowledge base directory
 KNOWLEDGE_DIR = "./knowledge"
 
+# Check if RAG is enabled via environment variable (default: true)
+RAG_ENABLED = os.getenv("RAG_ENABLED", "true").lower() in ("true", "1", "yes")
+
 class RAGService:
     def __init__(self):
         # Create knowledge directory if it doesn't exist
         os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
+        
+        # Initialize as disabled by default
+        self.embeddings = None
+        self.vectorstore = None
+        self.observer = None
+        
+        # Check if RAG is explicitly disabled
+        if not RAG_ENABLED:
+            logger.info("ℹ️ RAG service disabled via RAG_ENABLED environment variable")
+            return
         
         # Get embeddings model from config with safe default
         embeddings_model = getattr(config, "EMBEDDINGS_MODEL", os.getenv("EMBEDDINGS_MODEL", DEFAULT_EMBEDDINGS_MODEL))
@@ -37,13 +50,13 @@ class RAGService:
             self._initialize_vectorstore()
             logger.info("✅ RAG service initialized successfully")
         except ImportError as e:
-            logger.error(f"❌ RAG service disabled: Missing dependency - {str(e)}")
-            logger.error("💡 Install sentence-transformers package to enable RAG features")
+            logger.warning(f"⚠️ RAG service disabled: Missing dependency - {str(e)}")
+            logger.info("💡 To enable RAG features, install: pip install -r requirements-rag.txt")
             self.embeddings = None
             self.vectorstore = None
             self.observer = None
         except Exception as e:
-            logger.error(f"❌ RAG service disabled: Initialization failed - {str(e)}")
+            logger.warning(f"⚠️ RAG service disabled: Initialization failed - {str(e)}")
             self.embeddings = None
             self.vectorstore = None
             self.observer = None
@@ -52,6 +65,10 @@ class RAGService:
         # Import here since Observer is imported inside __init__ try block
         from watchdog.events import FileSystemEventHandler
         
+        # Only start watcher if observer was initialized
+        if not self.observer:
+            return
+            
         class KnowledgeBaseHandler(FileSystemEventHandler):
             def __init__(self, rag_service):
                 self.rag_service = rag_service
@@ -76,6 +93,10 @@ class RAGService:
             logger.error(f"❌ Ошибка перезагрузки: {str(e)}")
     
     def _initialize_vectorstore(self):
+        # Only initialize if embeddings are available
+        if not self.embeddings:
+            return
+            
         # Import langchain dependencies here (they're imported in __init__ try block)
         from langchain_community.vectorstores import FAISS
         from langchain_community.document_loaders import (

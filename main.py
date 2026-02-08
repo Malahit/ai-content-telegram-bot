@@ -7,6 +7,7 @@ for running the bot with subscription features.
 """
 
 import asyncio
+import os
 import random
 import re
 import sys
@@ -81,12 +82,22 @@ logger.info("=" * 60)
 
 config_info = config.get_safe_config_info()
 logger.info(f"Configuration loaded: {config_info}")
-logger.info(f"RAG Status: {'ENABLED' if rag_service.is_enabled() else 'DISABLED'}")
+
+# Enhanced RAG status logging
+rag_env_enabled = os.getenv("RAG_ENABLED", "true").lower() in ("true", "1", "yes")
+if not rag_env_enabled:
+    logger.info(f"RAG Status: DISABLED (via RAG_ENABLED=false)")
+elif rag_service.is_enabled():
+    logger.info(f"RAG Status: ENABLED ✅")
+else:
+    logger.info(f"RAG Status: DISABLED (dependencies not installed - see requirements-rag.txt)")
+    
 logger.info(f"Translation Status: {'ENABLED' if translation_service.is_enabled() else 'DISABLED'}")
 logger.info(f"Images Status: {'ENABLED' if IMAGES_ENABLED else 'DISABLED'}")
 logger.info(f"Statistics Status: {'ENABLED' if STATS_ENABLED else 'DISABLED'}")
 logger.info(f"Payments Status: {'ENABLED' if config.provider_token else 'DISABLED'}")
 logger.info(f"Admin Users: {len(ADMIN_USER_IDS)}")
+
 
 
 # Initialize bot and dispatcher
