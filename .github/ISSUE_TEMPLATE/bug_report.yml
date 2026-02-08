@@ -3,15 +3,10 @@ description: Сообщить об ошибке или проблеме в ра�
 title: "[БАГ]: "
 labels: ["bug"]
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Спасибо за сообщение об ошибке! Пожалуйста, заполните форму ниже.
-  
   - type: textarea
-    id: description
+    id: summary
     attributes:
-      label: Описание проблемы
+      label: Резюме
       description: Краткое описание проблемы
       placeholder: Опишите проблему...
     validations:
@@ -20,14 +15,14 @@ body:
   - type: textarea
     id: reproduction
     attributes:
-      label: Шаги для воспроизведения
+      label: Шаги воспроизведения
       description: Как воспроизвести проблему?
       placeholder: |
         1. Перейти к '...'
         2. Нажать на '...'
         3. Увидеть ошибку
     validations:
-      required: true
+      required: false
   
   - type: textarea
     id: expected
@@ -36,7 +31,7 @@ body:
       description: Что должно было произойти?
       placeholder: Опишите ожидаемое поведение...
     validations:
-      required: true
+      required: false
   
   - type: textarea
     id: actual
@@ -45,32 +40,17 @@ body:
       description: Что произошло на самом деле?
       placeholder: Опишите фактическое поведение...
     validations:
-      required: true
-  
-  - type: input
-    id: version
-    attributes:
-      label: Версия приложения
-      description: Какую версию вы используете?
-      placeholder: например, v1.0.0
-    validations:
       required: false
   
-  - type: input
-    id: commit
+  - type: textarea
+    id: environment
     attributes:
-      label: Коммит
-      description: SHA коммита (если известен)
-      placeholder: например, abc123def
-    validations:
-      required: false
-  
-  - type: input
-    id: platform
-    attributes:
-      label: Платформа
-      description: На какой платформе вы запускаете бот?
-      placeholder: например, Linux, Docker, Railway
+      label: Среда
+      description: Версия приложения, commit, платформа/браузер/OS
+      placeholder: |
+        Версия: v1.0.0
+        Commit: abc123def
+        Платформа: Linux/Docker/Railway
     validations:
       required: false
   
@@ -78,7 +58,7 @@ body:
     id: attachments
     attributes:
       label: Вложения
-      description: Скриншоты, логи или другие файлы (при наличии)
+      description: Скриншоты, логи или другие файлы
       placeholder: Вставьте скриншоты или логи...
     validations:
       required: false
@@ -86,10 +66,9 @@ body:
   - type: checkboxes
     id: checklist
     attributes:
-      label: Чеклист
-      description: Пожалуйста, подтвердите следующее
+      label: Чек-лист
       options:
-        - label: Я убедился, что в сообщении нет секретов (токены, API ключи и т.д.)
+        - label: Нет секретов (токены, API ключи и т.д.)
           required: true
-        - label: Я проверил, что похожие issue не были созданы ранее
+        - label: Поискал похожие issues
           required: true
