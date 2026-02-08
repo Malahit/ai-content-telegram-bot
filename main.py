@@ -83,9 +83,9 @@ logger.info("=" * 60)
 config_info = config.get_safe_config_info()
 logger.info(f"Configuration loaded: {config_info}")
 
-# Enhanced RAG status logging
-rag_env_enabled = os.getenv("RAG_ENABLED", "true").lower() in ("true", "1", "yes")
-if not rag_env_enabled:
+# Enhanced RAG status logging - import RAG_ENABLED from rag_service to avoid duplication
+from rag_service import RAG_ENABLED
+if not RAG_ENABLED:
     logger.info(f"RAG Status: DISABLED (via RAG_ENABLED=false)")
 elif rag_service.is_enabled():
     logger.info(f"RAG Status: ENABLED ✅")

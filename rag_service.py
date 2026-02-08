@@ -51,7 +51,7 @@ class RAGService:
             logger.info("✅ RAG service initialized successfully")
         except ImportError as e:
             logger.warning(f"⚠️ RAG service disabled: Missing dependency - {str(e)}")
-            logger.info("💡 To enable RAG features, install: pip install -r requirements-rag.txt")
+            logger.warning("💡 To enable RAG features, install: pip install -r requirements-rag.txt")
             self.embeddings = None
             self.vectorstore = None
             self.observer = None
@@ -200,4 +200,4 @@ class RAGService:
 rag_service = RAGService()
 
 # Define exports
-__all__ = ["rag_service", "RAGService"]
+__all__ = ["rag_service", "RAGService", "RAG_ENABLED"]
