@@ -1,6 +1,14 @@
 # RAG (Retrieval-Augmented Generation) dependencies
-# Install these only if you need RAG features:
-# pip install -r requirements-rag.txt
+# Install these only if you need RAG features to enhance content generation
+# with your own knowledge base documents.
+#
+# Installation: pip install -r requirements-rag.txt
+#
+# These dependencies enable:
+# - Document loading and parsing (pypdf, unstructured)
+# - Vector embeddings and similarity search (sentence-transformers, faiss-cpu)
+# - LangChain framework integration (langchain, langchain-community, langchain-openai)
+# - Auto-reloading on file changes (watchdog)
 
 langchain==0.3.2
 langchain-community==0.3.1
