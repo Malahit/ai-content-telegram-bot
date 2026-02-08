@@ -3,17 +3,6 @@ import logging
 import threading
 import asyncio
 from typing import List, Tuple, Optional
-from langchain_community.vectorstores import FAISS
-from langchain_community.document_loaders import (
-    TextLoader, 
-    PyPDFLoader, 
-    UnstructuredMarkdownLoader
-)
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 from config import config
 from logger_config import logger
 
@@ -23,30 +12,20 @@ DEFAULT_EMBEDDINGS_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 # Knowledge base directory
 KNOWLEDGE_DIR = "./knowledge"
 
-class KnowledgeBaseHandler(FileSystemEventHandler):
-    def __init__(self, rag_service):
-        self.rag_service = rag_service
-    
-    def on_any_event(self, event):
-        if not event.is_directory and event.src_path.endswith(('.txt', '.md', '.pdf')):
-            logger.info(f"🔄 Обнаружено изменение в: {event.src_path}")
-            self.rag_service.reload_knowledge_base()
-
 class RAGService:
     def __init__(self):
         # Create knowledge directory if it doesn't exist
         os.makedirs(KNOWLEDGE_DIR, exist_ok=True)
         
         # Get embeddings model from config with safe default
-        # Handle None/empty values by checking both config and environment
-        embeddings_model = (
-            getattr(config, "EMBEDDINGS_MODEL", None) 
-            or os.getenv("EMBEDDINGS_MODEL") 
-            or DEFAULT_EMBEDDINGS_MODEL
-        )
+        embeddings_model = getattr(config, "EMBEDDINGS_MODEL", os.getenv("EMBEDDINGS_MODEL", DEFAULT_EMBEDDINGS_MODEL))
         
         # Try to initialize embeddings - if it fails, disable RAG gracefully
         try:
+            # Import dependencies here to avoid import-time crashes
+            from langchain_community.embeddings import HuggingFaceEmbeddings
+            from watchdog.observers import Observer
+            
             self.embeddings = HuggingFaceEmbeddings(
                 model_name=embeddings_model,
                 model_kwargs={'device': 'cpu'},
@@ -70,6 +49,18 @@ class RAGService:
             self.observer = None
     
     def _start_watcher(self):
+        # Import here since Observer is imported inside __init__ try block
+        from watchdog.events import FileSystemEventHandler
+        
+        class KnowledgeBaseHandler(FileSystemEventHandler):
+            def __init__(self, rag_service):
+                self.rag_service = rag_service
+            
+            def on_any_event(self, event):
+                if not event.is_directory and event.src_path.endswith(('.txt', '.md', '.pdf')):
+                    logger.info(f"🔄 Обнаружено изменение в: {event.src_path}")
+                    self.rag_service.reload_knowledge_base()
+        
         event_handler = KnowledgeBaseHandler(self)
         self.observer.schedule(event_handler, path=KNOWLEDGE_DIR, recursive=True)
         self.observer_thread = threading.Thread(target=self.observer.start, daemon=True)
@@ -85,6 +76,15 @@ class RAGService:
             logger.error(f"❌ Ошибка перезагрузки: {str(e)}")
     
     def _initialize_vectorstore(self):
+        # Import langchain dependencies here (they're imported in __init__ try block)
+        from langchain_community.vectorstores import FAISS
+        from langchain_community.document_loaders import (
+            TextLoader, 
+            PyPDFLoader, 
+            UnstructuredMarkdownLoader
+        )
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+        
         documents = []
         for root, _, files in os.walk(KNOWLEDGE_DIR):
             for file in files:
@@ -114,7 +114,17 @@ class RAGService:
         else:
             logger.warning(f"📁 Папка {KNOWLEDGE_DIR} пуста. RAG-база не инициализирована.")
     
-    async def asearch(self, query: str, k: int = 3) -> List[Document]:
+    async def asearch(self, query: str, k: int = 3) -> List:
+        """
+        Search for similar documents.
+        
+        Args:
+            query: The search query
+            k: Number of results to return (default: 3)
+            
+        Returns:
+            List of Document objects if vectorstore is available, empty list otherwise.
+        """
         if not self.vectorstore:
             return []
         return await asyncio.to_thread(self.vectorstore.similarity_search, query, k=k)
