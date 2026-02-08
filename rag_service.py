@@ -115,7 +115,16 @@ class RAGService:
             logger.warning(f"📁 Папка {KNOWLEDGE_DIR} пуста. RAG-база не инициализирована.")
     
     async def asearch(self, query: str, k: int = 3) -> List:
-        """Search for similar documents. Returns list of Document objects if available."""
+        """
+        Search for similar documents.
+        
+        Args:
+            query: The search query
+            k: Number of results to return (default: 3)
+            
+        Returns:
+            List of Document objects if vectorstore is available, empty list otherwise.
+        """
         if not self.vectorstore:
             return []
         return await asyncio.to_thread(self.vectorstore.similarity_search, query, k=k)

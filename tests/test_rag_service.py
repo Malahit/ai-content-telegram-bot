@@ -149,12 +149,14 @@ class TestRAGServiceInitialization(unittest.TestCase):
                 os.chdir(test_dir)
                 
                 try:
-                    # Reset mock to clear any previous calls
+                    # Reset mock to clear any previous calls from module reloading
                     mock_embeddings.reset_mock()
                     
                     service = RAGService()
                     
                     # Check that HuggingFaceEmbeddings was called with default model
+                    # Note: Using assertTrue instead of assert_called_once because
+                    # test framework may reload modules causing multiple calls
                     self.assertTrue(mock_embeddings.called)
                     # Get the most recent call
                     call_args = mock_embeddings.call_args
