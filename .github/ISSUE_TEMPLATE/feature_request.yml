@@ -1,0 +1,50 @@
+name: Запрос функциональности
+description: Предложить новую функцию или улучшение
+title: "[ФУНКЦИЯ]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Проблема/Мотивация
+      description: Какую проблему решает эта функция?
+      placeholder: Опишите проблему, которую вы хотите решить...
+    validations:
+      required: false
+  
+  - type: textarea
+    id: desired-outcome
+    attributes:
+      label: Желаемый результат
+      description: Как должна работать новая функция?
+      placeholder: Опишите желаемое поведение...
+    validations:
+      required: false
+  
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Альтернативы
+      description: Рассматривали ли вы альтернативные решения?
+      placeholder: Опишите альтернативные решения...
+    validations:
+      required: false
+  
+  - type: textarea
+    id: risks
+    attributes:
+      label: Риски/Ограничения
+      description: Какие риски или ограничения следует учесть?
+      placeholder: Опишите возможные риски или ограничения...
+    validations:
+      required: false
+  
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Чек-лист
+      options:
+        - label: Нет секретов (токены, API ключи и т.д.)
+          required: true
+        - label: Поискал похожие issues
+          required: true
