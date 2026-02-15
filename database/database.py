@@ -1,56 +1,45 @@
 """
-Database configuration and session management.
-
-This module handles SQLAlchemy database connection and session management.
+Database engine and session setup.
 """
+import os
+from typing import Optional
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy.exc import SQLAlchemyError
+from logger_config import logger
 
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.orm import sessionmaker
-from typing import AsyncGenerator
-
+# Import Base from models (ensure models.py defines Base)
 from .models import Base
 
-# Database URL - using SQLite with aiosqlite for async support
-DATABASE_URL = "sqlite+aiosqlite:///./bot_database.db"
+# Priority for DB URL:
+# 1) environment variable DATABASE_URL
+# 2) config.database_url (if defined)
+# 3) fallback to local sqlite file for dev
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Create async engine
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,  # Set to True for SQL query logging
-    future=True
-)
+if not DATABASE_URL:
+    try:
+        from config import config
+        DATABASE_URL = getattr(config, "database_url", None)
+    except Exception:
+        DATABASE_URL = None
 
-# Create async session factory
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False
-)
+if not DATABASE_URL:
+    DATABASE_URL = "sqlite+aiosqlite:///./ai_content_bot.db"
+    logger.info("No DATABASE_URL provided — using local SQLite for dev: ./ai_content_bot.db")
+
+engine = create_async_engine(DATABASE_URL, echo=False, future=True)
+AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 
 
 async def init_db() -> None:
-    """
-    Initialize the database by creating all tables.
-    
-    This should be called once at application startup.
-    """
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("✅ Database tables created/verified")
+    except SQLAlchemyError as e:
+        logger.exception(f"Failed to initialize database: {e}")
+        raise
 
 
-async def get_session() -> AsyncGenerator[AsyncSession, None]:
-    """
-    Get an async database session.
-    
-    This is a dependency that can be used with FastAPI or manually.
-    
-    Yields:
-        AsyncSession: Database session
-    """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+def get_session() -> AsyncSession:
+    return AsyncSessionLocal()
