@@ -1,6 +1,5 @@
-"""Database package for AI Content Telegram Bot."""
+"""Database package exports."""
+from .database import init_db, get_session, engine, AsyncSessionLocal
+from .models import User, Payment, Log, UserRole, UserStatus
 
-from .database import init_db, get_session, engine
-from .models import User, Payment
-
-__all__ = ['init_db', 'get_session', 'engine', 'User', 'Payment']
+__all__ = ["init_db", "get_session", "engine", "AsyncSessionLocal", "User", "Payment", "Log", "UserRole", "UserStatus"]
