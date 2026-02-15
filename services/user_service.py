@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
 from database.models import User, Log, UserRole, UserStatus
 from database.database import AsyncSessionLocal
@@ -41,19 +42,36 @@ def sanitize_for_log(text: str) -> str:
 async def add_user(user: User) -> User:
     """
     Add a new user to the database.
+
+    If a user with the same telegram_id already exists (race condition),
+    returns the existing user instead of raising IntegrityError.
     
     Args:
         user: User object to add
         
     Returns:
-        User: The added user with ID assigned
+        User: The added or existing user
     """
     async with AsyncSessionLocal() as session:
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-        logger.info(f"Added new user: telegram_id={user.telegram_id}")
-        return user
+        try:
+            session.add(user)
+            await session.commit()
+            await session.refresh(user)
+            logger.info(f"Added new user: telegram_id={user.telegram_id}")
+            return user
+        except IntegrityError:
+            # Concurrent insert happened — rollback and return existing user
+            await session.rollback()
+            result = await session.execute(
+                select(User).where(User.telegram_id == user.telegram_id)
+            )
+            existing = result.scalar_one_or_none()
+            if existing:
+                logger.info(f"User already exists (concurrent insert): telegram_id={user.telegram_id}")
+                return existing
+            # If not found (unexpected), re-raise
+            logger.exception("IntegrityError during add_user but existing user not found after rollback")
+            raise
 
 
 async def get_user(telegram_id: int) -> Optional[User]:
@@ -209,8 +227,9 @@ async def register_or_get_user(
                 await session.commit()
                 await session.refresh(user)
                 logger.info(f"Updated user info for {telegram_id}")
+            return user
         else:
-            # Create new user
+            # Create new user (handle race conditions)
             user = User(
                 telegram_id=telegram_id,
                 username=username,
@@ -219,19 +238,31 @@ async def register_or_get_user(
                 role=role,
                 status=UserStatus.ACTIVE
             )
-            session.add(user)
-            await session.commit()
-            await session.refresh(user)
-            
-            # Log registration
-            safe_name = sanitize_for_log(first_name or username or str(telegram_id))
-            await add_log(
-                telegram_id=telegram_id,
-                action=f"User registered: name='{safe_name}', role='{role.value}'"
-            )
-            logger.info(f"✅ User {telegram_id} ({safe_name}) registered with role '{role.value}'")
-        
-        return user
+            try:
+                session.add(user)
+                await session.commit()
+                await session.refresh(user)
+                
+                # Log registration
+                safe_name = sanitize_for_log(first_name or username or str(telegram_id))
+                await add_log(
+                    telegram_id=telegram_id,
+                    action=f"User registered: name='{safe_name}', role='{role.value}'"
+                )
+                logger.info(f"✅ User {telegram_id} ({safe_name}) registered with role '{role.value}'")
+                return user
+            except IntegrityError:
+                # Concurrent insert — rollback and return existing user
+                await session.rollback()
+                result = await session.execute(
+                    select(User).where(User.telegram_id == telegram_id)
+                )
+                existing = result.scalar_one_or_none()
+                if existing:
+                    logger.info(f"User already exists after IntegrityError: telegram_id={telegram_id}")
+                    return existing
+                logger.exception("IntegrityError during register_or_get_user but existing user not found after rollback")
+                raise
 
 
 async def update_user_role(telegram_id: int, new_role: UserRole, admin_id: Optional[int] = None) -> bool:
