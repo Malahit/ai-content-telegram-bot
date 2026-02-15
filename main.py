@@ -248,16 +248,36 @@ async def main() -> None:
     logger.info("✅ Scheduler started")
 
     # Start polling with graceful shutdown handlers (PollingManager реализован в utils)
-    polling_manager = PollingManager(logger)
+    # instantiate PollingManager — используем именованный аргумент, чтобы не сдвинуть позиционные параметры
+try:
+    polling_manager = PollingManager(logger=logger)
+except TypeError:
+    # Если PollingManager старой версии ожидает logger как первый позиционный аргумент,
+    # используем fallback, но это должно быть безопасно.
+        # Instantiate PollingManager — используем именованный аргумент
+    try:
+        polling_manager = PollingManager(logger=logger)
+    except TypeError:
+        polling_manager = PollingManager(logger)
+
     try:
         logger.info("🚀 Starting bot polling (attempt 1/6)...")
         await polling_manager.start_polling_with_retry(dp, bot, on_conflict_callback=None)
     finally:
-        # Ensure graceful shutdown
-        await shutdown_manager()
+        # Ensure graceful shutdown — вызываем безопасно
+        async def _call_shutdown_manager(sm):
+            if callable(sm):
+                if asyncio.iscoroutinefunction(sm):
+                    await sm()
+                else:
+                    sm()
+            elif hasattr(sm, "shutdown"):
+                method = getattr(sm, "shutdown")
+                if asyncio.iscoroutinefunction(method):
+                    await method()
+                else:
+                    method()
+            else:
+                logger.error("shutdown_manager is not callable and has no 'shutdown' method; skipping explicit shutdown call")
 
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Shutting down due to interrupt/exit")
+        await _call_shutdown_manager(shutdown_manager)
