@@ -248,36 +248,47 @@ async def main() -> None:
     logger.info("✅ Scheduler started")
 
     # Start polling with graceful shutdown handlers (PollingManager реализован в utils)
-    # instantiate PollingManager — используем именованный аргумент, чтобы не сдвинуть позиционные параметры
-try:
-    polling_manager = PollingManager(logger=logger)
-except TypeError:
-    # Если PollingManager старой версии ожидает logger как первый позиционный аргумент,
-    # используем fallback, но это должно быть безопасно.
-        # Instantiate PollingManager — используем именованный аргумент
+    # Instantiate PollingManager with explicit numeric parameters (do NOT pass logger here)
     try:
-        polling_manager = PollingManager(logger=logger)
+        polling_manager = PollingManager(max_retries=5, initial_delay=5.0, max_delay=300.0, backoff_factor=2.0)
     except TypeError:
-        polling_manager = PollingManager(logger)
+        # Fallbacks for older signatures
+        try:
+            polling_manager = PollingManager(logger=logger)
+        except TypeError:
+            polling_manager = PollingManager(logger)
 
     try:
         logger.info("🚀 Starting bot polling (attempt 1/6)...")
         await polling_manager.start_polling_with_retry(dp, bot, on_conflict_callback=None)
     finally:
-        # Ensure graceful shutdown — вызываем безопасно
+        # Ensure graceful shutdown — call shutdown_manager safely
         async def _call_shutdown_manager(sm):
-            if callable(sm):
+            if sm is None:
+                logger.warning("No shutdown_manager provided; skipping shutdown")
+                return
+            # If sm is a callable function/coroutine (rare), support that
+            if callable(sm) and not hasattr(sm, "shutdown"):
                 if asyncio.iscoroutinefunction(sm):
                     await sm()
                 else:
                     sm()
-            elif hasattr(sm, "shutdown"):
+                return
+            # If object has shutdown(), call it (supports sync or async)
+            if hasattr(sm, "shutdown"):
                 method = getattr(sm, "shutdown")
                 if asyncio.iscoroutinefunction(method):
                     await method()
                 else:
                     method()
-            else:
-                logger.error("shutdown_manager is not callable and has no 'shutdown' method; skipping explicit shutdown call")
+                return
+            logger.error("shutdown_manager is not callable and has no 'shutdown' method; skipping explicit shutdown call")
 
         await _call_shutdown_manager(shutdown_manager)
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logger.info("Shutting down due to interrupt/exit")
