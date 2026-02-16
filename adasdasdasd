@@ -1,0 +1,32 @@
+[35m.env.example[m[36m:[m[32m3[m[36m:[m[1;31mBOT_TOKEN[m=your_telegram_bot_token_here
+[35mCONFLICT_RESOLUTION_SUMMARY.md[m[36m:[m[32m127[m[36m:[m[1;31mBOT_TOKEN[m=...
+[35mFEATURES.md[m[36m:[m[32m80[m[36m:[m[1;31mBOT_TOKEN[m=your_telegram_bot_token
+[35mREADME md AI Content Telegram.txt[m[36m:[m[32m10[m[36m:[m- Telegram [1;31mBOT_TOKEN[m: Успешно подключен ✅
+[35mREADME md AI Content Telegram.txt[m[36m:[m[32m14[m[36m:[m- Переменные окружения ([1;31mBOT_TOKEN[m и PPLX_API_KEY): Добавлены ✅
+[35mREADME md AI Content Telegram.txt[m[36m:[m[32m42[m[36m:[m   [1;31mBOT_TOKEN[m=ваш_токен
+[35mREADME.md[m[36m:[m[32m10[m[36m:[m- Telegram [1;31mBOT_TOKEN[m: Успешно подключен ✅
+[35mREADME.md[m[36m:[m[32m14[m[36m:[m- Переменные окружения ([1;31mBOT_TOKEN[m и PPLX_API_KEY): Добавлены ✅
+[35mREADME.md[m[36m:[m[32m42[m[36m:[m   [1;31mBOT_TOKEN[m=ваш_токен
+[35mREADME.old.txt[m[36m:[m[32m10[m[36m:[m- Telegram [1;31mBOT_TOKEN[m: Успешно подключен ✅
+[35mREADME.old.txt[m[36m:[m[32m14[m[36m:[m- Переменные окружения ([1;31mBOT_TOKEN[m и PPLX_API_KEY): Добавлены ✅
+[35mREADME.old.txt[m[36m:[m[32m42[m[36m:[m   [1;31mBOT_TOKEN[m=ваш_токен
+[35mREFACTORING.md[m[36m:[m[32m94[m[36m:[m- `[1;31mBOT_TOKEN[m`: Telegram bot token
+[35mREFACTORING.md[m[36m:[m[32m127[m[36m:[m- Tokens ([1;31mBOT_TOKEN[m, etc.)
+[35mSUMMARY.md[m[36m:[m[32m42[m[36m:[mprint(f"🚀 [1;31mBOT_TOKEN[m: ✅ | PPLX_API_KEY: ✅")  # Could accidentally log tokens
+[35mconfig.py[m[36m:[m[32m38[m[36m:[m            bot_token=_env("[1;31mBOT_TOKEN[m", required=True),
+[35mmain.py[m[36m:[m[32m5[m[36m:[m- [1;31mBOT_TOKEN[m validation on startup
+[35mmain.py[m[36m:[m[32m110[m[36m:[m# Validate [1;31mBOT_TOKEN[m before creating Bot instance to fail fast with clear message
+[35mmain.py[m[36m:[m[32m113[m[36m:[m        logger.error("[1;31mBOT_TOKEN[m is empty. Please set [1;31mBOT_TOKEN[m environment variable.")
+[35mmain.py[m[36m:[m[32m114[m[36m:[m        raise SystemExit("Missing [1;31mBOT_TOKEN[m")
+[35mmain.py[m[36m:[m[32m118[m[36m:[m            "[1;31mBOT_TOKEN[m appears to have a wrong format. Ensure you pasted the BotFather token exactly "
+[35mmain.py[m[36m:[m[32m121[m[36m:[m        raise SystemExit("Invalid [1;31mBOT_TOKEN[m format")
+[35mtests/test_config.py[m[36m:[m[32m28[m[36m:[m        '[1;31mBOT_TOKEN[m': 'test_token_123',
+[35mtests/test_config.py[m[36m:[m[32m38[m[36m:[m        '[1;31mBOT_TOKEN[m': 'test_token_123',
+[35mtests/test_config.py[m[36m:[m[32m48[m[36m:[m        '[1;31mBOT_TOKEN[m': 'test_token_123',
+[35mtests/test_config.py[m[36m:[m[32m63[m[36m:[m        """Test that Config raises error when [1;31mBOT_TOKEN[m is missing."""
+[35mtests/test_config.py[m[36m:[m[32m66[m[36m:[m        self.assertIn('[1;31mBOT_TOKEN[m', str(context.exception))
+[35mtests/test_config.py[m[36m:[m[32m68[m[36m:[m    @patch.dict(os.environ, {'[1;31mBOT_TOKEN[m': 'test_token_123'}, clear=True)
+[35mtests/test_config.py[m[36m:[m[32m76[m[36m:[m        '[1;31mBOT_TOKEN[m': 'test_token_123',
+[35mtests/test_config.py[m[36m:[m[32m85[m[36m:[m        '[1;31mBOT_TOKEN[m': 'test_token_123',
+[35mtests/test_config.py[m[36m:[m[32m94[m[36m:[m        '[1;31mBOT_TOKEN[m': 'test_token_123',
+[35mverify_refactoring.py[m[36m:[m[32m13[m[36m:[mos.environ['[1;31mBOT_TOKEN[m'] = 'test_token_12345'
