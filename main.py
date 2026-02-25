@@ -85,6 +85,21 @@ except Exception:
 # Admins
 ADMIN_USER_IDS = config.admin_user_ids or []
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    value = value.strip().lower()
+    if value in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
+
+PAYMENTS_ENABLED = _env_bool("PAYMENTS_ENABLED", True)
+
 # Startup logs
 logger.info("=" * 60)
 logger.info("AI Content Telegram Bot v3.0 Starting (with Subscriptions)...")
@@ -103,7 +118,9 @@ else:
 logger.info(f"Translation Status: {'ENABLED' if translation_service.is_enabled() else 'DISABLED'}")
 logger.info(f"Images Status: {'ENABLED' if IMAGES_ENABLED else 'DISABLED'}")
 logger.info(f"Statistics Status: {'ENABLED' if STATS_ENABLED else 'DISABLED'}")
-logger.info(f"Payments Status: {'ENABLED' if config.provider_token else 'DISABLED'}")
+logger.info(
+    f"Payments Status: {'ENABLED' if (config.provider_token and PAYMENTS_ENABLED) else 'DISABLED'}"
+)
 logger.info(f"Admin Users: {len(ADMIN_USER_IDS)}")
 
 
