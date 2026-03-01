@@ -39,6 +39,9 @@ from database.database import init_db, get_session
 from database.models import UserRole, UserStatus
 from services import user_service
 
+# Subscription router (premium)
+from handlers import subscription_router
+
 # SaaS services
 from services.tenant_service import resolve_user_and_tenant
 from services.budget_service import check_tenant_budget, should_send_budget_warning, mark_budget_warned
@@ -103,6 +106,9 @@ logger.info(f"Admin Users: {len(ADMIN_USER_IDS)}")
 # Initialize bot and dispatcher
 bot = Bot(token=config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
+
+# Attach subscription router (premium / payments)
+dp.include_router(subscription_router)
 
 # Global scheduler instance
 scheduler: Optional[AsyncIOScheduler] = None

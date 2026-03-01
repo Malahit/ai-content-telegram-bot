@@ -35,6 +35,7 @@ AI Content Telegram Bot — это проект, предназначенный 
 - **bot_statistics.py** - Отслеживание статистики использования
 - **image_fetcher.py** - Получение изображений через Pexels API
 - **bot.py** - Основной модуль с обработчиками Telegram
+- **main.py** - Канонический entrypoint (запускает bot.py)
 
 ## Инструкция для запуска
 1. Убедитесь, что ваш файл `.env` содержит следующие переменные:
@@ -81,7 +82,7 @@ AI Content Telegram Bot — это проект, предназначенный 
    
    3. **Запустите бота:**
       ```bash
-      python bot.py
+      python main.py
       ```
       Проверьте лог: `✅ RAG service initialized successfully`
    
@@ -98,8 +99,14 @@ AI Content Telegram Bot — это проект, предназначенный 
 
 4. Запустите локально приложение:
    ```bash
-   python bot.py
+   python main.py
    ```
+
+## Railway (важно)
+- Это Telegram polling worker: **не нужно** Public Networking / домен.
+- В Railway Service → Settings → отключите Public Networking.
+- Custom Start Command: `python main.py`
+- Replicas: 1
 
 ## Текущий функционал
 - ✅ Генерация AI-контента по запросу в Telegram.
