@@ -111,6 +111,55 @@ class TestConfig(unittest.TestCase):
         self.assertIn('channel_id', safe_info)
         self.assertIn('api_model', safe_info)
 
+    @patch.dict(os.environ, {
+        'BOT_TOKEN': 'test_token_123',
+        'PPLX_API_KEY': 'test_api_key_456',
+    })
+    def test_bot_mode_default_is_polling(self):
+        """BOT_MODE defaults to 'polling' when not set."""
+        config = Config()
+        self.assertEqual(config.bot_mode, 'polling')
+
+    @patch.dict(os.environ, {
+        'BOT_TOKEN': 'test_token_123',
+        'PPLX_API_KEY': 'test_api_key_456',
+        'BOT_MODE': 'webhook',
+    })
+    def test_bot_mode_webhook(self):
+        """BOT_MODE=webhook is accepted."""
+        config = Config()
+        self.assertEqual(config.bot_mode, 'webhook')
+
+    @patch.dict(os.environ, {
+        'BOT_TOKEN': 'test_token_123',
+        'PPLX_API_KEY': 'test_api_key_456',
+        'BOT_MODE': 'disabled',
+    })
+    def test_bot_mode_disabled(self):
+        """BOT_MODE=disabled is accepted."""
+        config = Config()
+        self.assertEqual(config.bot_mode, 'disabled')
+
+    @patch.dict(os.environ, {
+        'BOT_TOKEN': 'test_token_123',
+        'PPLX_API_KEY': 'test_api_key_456',
+        'BOT_MODE': 'invalid_value',
+    })
+    def test_bot_mode_invalid_falls_back_to_polling(self):
+        """Unknown BOT_MODE values fall back to 'polling'."""
+        config = Config()
+        self.assertEqual(config.bot_mode, 'polling')
+
+    @patch.dict(os.environ, {
+        'BOT_TOKEN': 'test_token_123',
+        'PPLX_API_KEY': 'test_api_key_456',
+        'BOT_MODE': 'POLLING',  # uppercase
+    })
+    def test_bot_mode_case_insensitive(self):
+        """BOT_MODE parsing is case-insensitive."""
+        config = Config()
+        self.assertEqual(config.bot_mode, 'polling')
+
 
 if __name__ == '__main__':
     unittest.main()

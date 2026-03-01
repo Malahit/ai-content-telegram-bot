@@ -319,6 +319,15 @@ async def main() -> None:
     # Instantiate PollingManager correctly (do not pass logger as positional arg)
     polling_manager = PollingManager(max_retries=5, initial_delay=5.0, max_delay=300.0, backoff_factor=2.0)
 
+    bot_mode = config.bot_mode
+    if bot_mode != "polling":
+        logger.info(
+            f"ℹ️ BOT_MODE={bot_mode!r} — long-polling is disabled. "
+            "Set BOT_MODE=polling to enable. Shutting down gracefully."
+        )
+        await _call_shutdown_manager(shutdown_manager)
+        return
+
     try:
         logger.info("🚀 Starting bot polling (attempt 1/6)...")
         await polling_manager.start_polling_with_retry(dp, bot, on_conflict_callback=None)
