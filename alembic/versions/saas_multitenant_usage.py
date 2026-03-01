@@ -133,7 +133,7 @@ def upgrade() -> None:
         sa.Column("latency_ms", sa.Integer(), nullable=True),
         sa.Column(
             "created_at",
-            sa.DateTime(),
+            sa.DateTime(timezone=True),
             nullable=False,
             server_default=sa.text("CURRENT_TIMESTAMP"),
         ),
