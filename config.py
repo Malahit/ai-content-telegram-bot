@@ -57,6 +57,15 @@ class Config:
         except ValueError:
             self.autopost_interval_hours = 6
 
+        # Bot run mode: polling | webhook | disabled
+        # Set BOT_MODE=webhook or BOT_MODE=disabled to prevent long-polling from
+        # starting (e.g. when running multiple replicas or using Telegram webhooks).
+        # Defaults to "polling" for backward compatibility.
+        raw_mode = (_env("BOT_MODE", required=False) or "polling").lower()
+        if raw_mode not in {"polling", "webhook", "disabled"}:
+            raw_mode = "polling"
+        self.bot_mode: str = raw_mode
+
         # Admins
         self.admin_user_ids: List[int] = _parse_int_list(_env("ADMIN_USER_IDS", required=False))
 
@@ -83,6 +92,7 @@ class Config:
             "admin_user_count": len(self.admin_user_ids),
             "images_enabled": bool(self.pexels_api_key or self.pixabay_api_key),
             "payments_enabled": bool(self.provider_token),
+            "bot_mode": self.bot_mode,
         }
 
 
