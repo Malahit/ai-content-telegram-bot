@@ -7,7 +7,7 @@ This module contains core entities (users, payments, logs) and SaaS foundations
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 import enum
 
@@ -295,7 +295,7 @@ class UsageEvent(Base):
     cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), default=0, nullable=False)
     latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
 
     tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="usage_events")
     channel: Mapped[Optional["Channel"]] = relationship("Channel", back_populates="usage_events")
