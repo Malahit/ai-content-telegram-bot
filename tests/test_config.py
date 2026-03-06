@@ -4,11 +4,11 @@ Unit tests for configuration module.
 Tests configuration loading, validation, and security features.
 """
 
+import logging
 import os
 import unittest
 from unittest.mock import patch
 from config import Config
-
 
 class TestConfig(unittest.TestCase):
     """Test cases for Config class."""
@@ -159,6 +159,61 @@ class TestConfig(unittest.TestCase):
         """BOT_MODE parsing is case-insensitive."""
         config = Config()
         self.assertEqual(config.bot_mode, 'polling')
+
+    # ------------------------------------------------------------------
+    # validate_startup() tests
+    # ------------------------------------------------------------------
+
+    @patch.dict(os.environ, {
+        'BOT_TOKEN': 'test_token_123',
+        'PPLX_API_KEY': 'test_api_key_456',
+        'DATABASE_URL': 'postgresql://user:pass@host/db',
+        'CHANNEL_ID': '@mychannel',
+    })
+    def test_validate_startup_no_warnings_when_all_set(self):
+        """validate_startup() emits no warnings when DATABASE_URL and CHANNEL_ID are set."""
+        config = Config()
+        with self.assertNoLogs('config', level='WARNING'):
+            config.validate_startup()
+
+    @patch.dict(os.environ, {
+        'BOT_TOKEN': 'test_token_123',
+        'PPLX_API_KEY': 'test_api_key_456',
+    }, clear=True)
+    def test_validate_startup_warns_about_missing_database_url(self):
+        """validate_startup() warns when DATABASE_URL is absent."""
+        config = Config()
+        with self.assertLogs('config', level='WARNING') as cm:
+            config.validate_startup()
+        warnings_text = ' '.join(cm.output)
+        self.assertIn('DATABASE_URL', warnings_text)
+
+    @patch.dict(os.environ, {
+        'BOT_TOKEN': 'test_token_123',
+        'PPLX_API_KEY': 'test_api_key_456',
+    }, clear=True)
+    def test_validate_startup_warns_about_missing_channel_id(self):
+        """validate_startup() warns when CHANNEL_ID is absent."""
+        config = Config()
+        with self.assertLogs('config', level='WARNING') as cm:
+            config.validate_startup()
+        warnings_text = ' '.join(cm.output)
+        self.assertIn('CHANNEL_ID', warnings_text)
+
+    @patch.dict(os.environ, {
+        'BOT_TOKEN': 'test_token_123',
+        'PPLX_API_KEY': 'test_api_key_456',
+        'DATABASE_URL': 'postgresql://user:pass@host/db',
+        'CHANNEL_ID': '@mychannel',
+    })
+    def test_validate_startup_does_not_raise(self):
+        """validate_startup() must not raise even when settings are missing."""
+        config = Config()
+        # Should not raise regardless of env
+        try:
+            config.validate_startup()
+        except Exception as exc:
+            self.fail(f"validate_startup() raised unexpectedly: {exc}")
 
 
 if __name__ == '__main__':
