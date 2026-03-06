@@ -1,11 +1,17 @@
 """
-AI Content Telegram Bot - Main module.
+AI Content Telegram Bot — canonical runtime entry point.
 
 This bot generates AI-powered content for Telegram channels using Perplexity API.
-Supports optional RAG (Retrieval-Augmented Generation), translation, and image generation features.
+Supports optional RAG (Retrieval-Augmented Generation), translation, image
+generation, subscription/payment handling, and SaaS usage metering.
 
-SaaS foundations (multi-tenant + usage metering + budget guardrails) are integrated
-for user-driven generations.
+Run the bot:
+    python bot.py
+
+For Railway (or any production deploy), set the start command to ``python bot.py``
+(or rely on the Procfile which already points here).
+
+``main.py`` is a thin compatibility wrapper that delegates to this file.
 """
 
 import asyncio
@@ -48,6 +54,9 @@ from services.usage_service import record_usage_event, record_blocked_usage_even
 # Import utils for instance management
 from utils import InstanceLock, is_another_instance_running, shutdown_manager, PollingManager
 
+# Subscription / payment handlers
+from handlers import subscription_router
+
 # Import statistics and image fetcher from main
 try:
     from bot_statistics import stats_tracker
@@ -88,7 +97,7 @@ TELEGRAM_CAPTION_MAX_LENGTH = 1024
 
 # Log startup information (without sensitive data)
 logger.info("=" * 60)
-logger.info("AI Content Telegram Bot v2.2 Starting...")
+logger.info("AI Content Telegram Bot Starting...")
 logger.info("=" * 60)
 
 config_info = config.get_safe_config_info()
@@ -100,9 +109,30 @@ logger.info(f"Statistics Status: {'ENABLED' if STATS_ENABLED else 'DISABLED'}")
 logger.info(f"Admin Users: {len(ADMIN_USER_IDS)}")
 
 
+def _validate_bot_token(token: Optional[str]) -> str:
+    """Validate BOT_TOKEN format and fail fast with a clear message if invalid."""
+    if not token or not token.strip():
+        logger.error("BOT_TOKEN is empty. Set the BOT_TOKEN environment variable.")
+        raise SystemExit("Missing BOT_TOKEN")
+    token = token.strip()
+    if not re.match(r"^\d+:[A-Za-z0-9_-]+$", token):
+        logger.error(
+            "BOT_TOKEN format looks wrong. Ensure you pasted the BotFather token "
+            "exactly (no quotes, no extra spaces, no 'Bot ' prefix)."
+        )
+        raise SystemExit("Invalid BOT_TOKEN format")
+    return token
+
+
 # Initialize bot and dispatcher
-bot = Bot(token=config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(
+    token=_validate_bot_token(config.bot_token),
+    default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+)
 dp = Dispatcher(storage=MemoryStorage())
+
+# Register subscription / payment router
+dp.include_router(subscription_router)
 
 # Global scheduler instance
 scheduler: Optional[AsyncIOScheduler] = None
@@ -1021,6 +1051,10 @@ async def on_shutdown():
 async def main():
     """Main entry point."""
 
+    # Validate startup configuration early – logs clear warnings for absent
+    # optional-but-important settings (e.g. DATABASE_URL) before anything else runs.
+    config.validate_startup()
+
     if is_another_instance_running():
         logger.error("❌ Another bot instance is already running. Exiting.")
         sys.exit(1)
@@ -1031,7 +1065,7 @@ async def main():
         sys.exit(1)
 
     logger.info("=" * 60)
-    logger.info("✅ BOT v2.2 PRODUCTION READY!")
+    logger.info("✅ BOT PRODUCTION READY!")
     logger.info("=" * 60)
     logger.info(f"🔑 PEXELS_API_KEY доступен: {bool(config.pexels_api_key)}")
     logger.info(f"🔑 PIXABAY_API_KEY доступен: {bool(config.pixabay_api_key)}")

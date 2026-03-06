@@ -4,9 +4,13 @@ Configuration loader (backward-compatible).
 - Keeps `Config()` behavior expected by the codebase/tests.
 - Exposes module-level `config` for `from config import config`.
 - Uses lazy loading for `config` to avoid import-time crashes when env is absent.
+- Call `Config.validate_startup()` (or `config.validate_startup()`) early in the
+  application entry point to surface missing optional-but-important settings with
+  clear log messages before the bot starts polling.
 """
 from __future__ import annotations
 
+import logging
 import os
 from typing import Optional, List, Any
 
@@ -76,6 +80,26 @@ class Config:
     @classmethod
     def load(cls) -> "Config":
         return cls()
+
+    def validate_startup(self) -> None:
+        """
+        Log clear warnings for optional-but-important settings that are absent.
+
+        Call this once at application startup (before polling begins) so that
+        operators see actionable messages rather than cryptic runtime errors later.
+        Does not raise – the bot can still run in a degraded mode without these.
+        """
+        _log = logging.getLogger(__name__)
+        if not self.database_url:
+            _log.warning(
+                "DATABASE_URL is not set. The bot will attempt to use a default "
+                "SQLite database. Set DATABASE_URL (e.g. a PostgreSQL URL on Railway) "
+                "for persistent storage across restarts."
+            )
+        if not self.channel_id:
+            _log.warning(
+                "CHANNEL_ID is not set. Auto-posting to a channel will be disabled."
+            )
 
     def has_bot_token(self) -> bool:
         return bool(self.bot_token and self.bot_token.strip())
