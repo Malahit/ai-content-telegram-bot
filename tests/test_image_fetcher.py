@@ -9,8 +9,7 @@ import sys
 import tempfile
 import logging
 
-# Add parent directory to path to allow direct import
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import directly from the module to avoid services package dependencies
 from services.image_fetcher import ImageFetcher, ImageCache

@@ -83,3 +83,8 @@ metro-config.js
 *.backup
 *_old.py
 logger_config.py.broken
+
+# Temporary / scratch files
+*.broken
+*.tmp
+*.temp

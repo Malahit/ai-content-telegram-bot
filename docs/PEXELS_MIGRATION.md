@@ -110,7 +110,7 @@ After deployment, test the following:
 1. **Check API key**: Make sure `PEXELS_API_KEY` is set correctly
 2. **Check logs**: Look for "Pexels API response status" messages
 3. **Verify rate limit**: Pexels free tier = 200 requests/hour
-4. **Test API key**: Use `test_pexels.py` script
+4. **Test API key**: Use `tests/test_pexels.py` script
 
 ### Common Error Messages
 

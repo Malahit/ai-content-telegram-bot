@@ -48,12 +48,12 @@ You need at least one admin user to manage the bot. There are three methods:
 
 2. Run the init script:
    ```bash
-   python init_admin.py <your_telegram_id> "Your Name"
+   python scripts/init_admin.py <your_telegram_id> "Your Name"
    ```
 
    Example:
    ```bash
-   python init_admin.py 123456789 "John Doe"
+   python scripts/init_admin.py 123456789 "John Doe"
    ```
 
 3. You'll see:
@@ -208,7 +208,7 @@ View logs with `/logs` to monitor bot usage and security.
 - Backup your database regularly
 - Keep admin access restricted to trusted users
 - Review audit logs periodically
-- Use the init_admin.py script for the first admin
+- Use the scripts/init_admin.py script for the first admin
 
 ❌ **DON'T:**
 - Share your database file (contains user data)

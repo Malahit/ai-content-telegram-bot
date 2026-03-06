@@ -35,7 +35,7 @@ This PR successfully integrates **database-backed user management** and **compre
 - **7 admin commands** for complete user management
 - **Auto-registration** on first bot interaction
 - **Ban system** with access blocking
-- **init_admin.py** script for easy first-time setup
+- **scripts/init_admin.py** script for easy first-time setup
 - **Comprehensive documentation** (DATABASE_DOCUMENTATION.md, QUICK_START.md)
 - **Security hardening:**
   - Prevent self-ban/self-demotion
@@ -75,7 +75,7 @@ This PR successfully integrates **database-backed user management** and **compre
 ✅ Audit log creation and retrieval
 ✅ Admin commands (all 7)
 ✅ Alembic migrations
-✅ init_admin.py script
+✅ scripts/init_admin.py script
 ```
 
 ### Security Validation
@@ -100,7 +100,7 @@ All 11 code review comments addressed:
 
 ### For Administrators
 - **QUICK_START.md** - Step-by-step setup guide with 3 methods for creating first admin
-- **init_admin.py** - CLI tool with clear usage instructions
+- **scripts/init_admin.py** - CLI tool with clear usage instructions
 
 ### For Developers
 - **DATABASE_DOCUMENTATION.md** - 9KB comprehensive reference:
@@ -124,7 +124,7 @@ pip install sqlalchemy aiosqlite alembic
 alembic upgrade head
 
 # Create first admin
-python init_admin.py 123456789 "Admin Name"
+python scripts/init_admin.py 123456789 "Admin Name"
 
 # Start bot
 python bot.py
@@ -180,7 +180,7 @@ python bot.py
 
 **Created (4):**
 - `alembic/versions/add_role_status_and_logs.py` - Migration
-- `init_admin.py` - Admin setup script
+- `scripts/init_admin.py` - Admin setup script
 - `DATABASE_DOCUMENTATION.md` - Comprehensive docs
 - `QUICK_START.md` - Setup guide
 
@@ -188,7 +188,7 @@ python bot.py
 
 Before merging to production:
 - [x] Run migrations: `alembic upgrade head`
-- [x] Create first admin: `python init_admin.py <id> "Name"`
+- [x] Create first admin: `python scripts/init_admin.py <id> "Name"`
 - [x] Test admin commands in bot
 - [x] Verify logs working: `/logs`
 - [ ] Set up database backup schedule
