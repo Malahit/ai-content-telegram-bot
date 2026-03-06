@@ -56,6 +56,7 @@ from utils import InstanceLock, is_another_instance_running, shutdown_manager, P
 
 # Subscription / payment handlers
 from handlers import subscription_router
+from middlewares import SubscriptionMiddleware
 
 # Import statistics and image fetcher from main
 try:
@@ -133,6 +134,11 @@ dp = Dispatcher(storage=MemoryStorage())
 
 # Register subscription / payment router
 dp.include_router(subscription_router)
+
+# Register subscription middleware.
+# premium_commands is empty by default so the middleware is a pass-through
+# until specific commands are added to the premium gate.
+dp.message.middleware(SubscriptionMiddleware(premium_commands=[]))
 
 # Global scheduler instance
 scheduler: Optional[AsyncIOScheduler] = None
