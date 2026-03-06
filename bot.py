@@ -1016,6 +1016,19 @@ async def on_startup():
         f"🚀 Автопостинг запущен: каждые {config.autopost_interval_hours}ч → {config.channel_id}"
     )
 
+    # Single-glance health summary so Railway/production operators can confirm
+    # every component is up without grepping through scattered log lines.
+    logger.info("=" * 60)
+    logger.info("🏥 Startup health summary:")
+    logger.info("  Database     : ✅ initialized")
+    logger.info(f"  Scheduler    : ✅ running  (every {config.autopost_interval_hours}h)")
+    logger.info(f"  RAG          : {'✅ enabled' if rag_service.is_enabled() else '⚠️  disabled'}")
+    logger.info(
+        f"  Translation  : {'✅ enabled' if translation_service.is_enabled() else '⚠️  disabled'}"
+    )
+    logger.info(f"  Images       : {'✅ enabled' if IMAGES_ENABLED else '⚠️  disabled (no API keys)'}")
+    logger.info("=" * 60)
+
     shutdown_manager.register_callback(on_shutdown)
     shutdown_manager.register_signals()
 
