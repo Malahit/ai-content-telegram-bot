@@ -230,14 +230,14 @@ The database is automatically initialized when the bot starts. Tables are create
 
 ### Creating the First Admin
 
-**Method 1: Using init_admin.py script**
+**Method 1: Using scripts/init_admin.py script**
 ```bash
-python init_admin.py <telegram_user_id> "Admin Name"
+python scripts/init_admin.py <telegram_user_id> "Admin Name"
 ```
 
 Example:
 ```bash
-python init_admin.py 123456789 "Admin Name"
+python scripts/init_admin.py 123456789 "Admin Name"
 ```
 
 **Method 2: Direct SQLite command**

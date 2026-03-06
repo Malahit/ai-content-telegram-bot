@@ -220,10 +220,10 @@ Test instance locking manually:
 
 ```bash
 # Terminal 1
-python3 test_instance_lock_manual.py
+python3 tests/test_instance_lock_manual.py
 
 # Terminal 2 (while first is running)
-python3 test_instance_lock_manual.py
+python3 tests/test_instance_lock_manual.py
 # Should fail with "Another instance is running"
 ```
 

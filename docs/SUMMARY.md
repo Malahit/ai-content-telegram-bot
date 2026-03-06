@@ -79,7 +79,7 @@ logger.info(f"Configuration loaded: {config.get_safe_config_info()}")  # Safe
 - `tests/test_api_client.py` - 11 test cases for API client
 - `tests/test_translation.py` - 7 test cases for translation
 - `tests/run_tests.py` - Test runner script
-- `verify_refactoring.py` - Integration verification script
+- `scripts/verify_refactoring.py` - Integration verification script
 
 **Total: 35+ test cases covering all modules**
 
@@ -137,7 +137,7 @@ The code went through multiple code review cycles:
 Run the verification script to confirm everything works:
 
 ```bash
-python3 verify_refactoring.py
+python3 scripts/verify_refactoring.py
 ```
 
 **Expected Output:**
@@ -194,7 +194,7 @@ tests/test_logger.py        # Logger tests
 tests/test_api_client.py    # API client tests
 tests/test_translation.py   # Translation tests
 tests/run_tests.py          # Test runner
-verify_refactoring.py       # Verification script
+scripts/verify_refactoring.py  # Verification script
 REFACTORING.md              # Refactoring documentation
 ```
 

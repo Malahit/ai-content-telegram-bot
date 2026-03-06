@@ -6,7 +6,7 @@ This script tests the image_fetcher module with sample queries.
 import os
 import logging
 from dotenv import load_dotenv
-from image_fetcher import ImageFetcher
+from services.image_fetcher import ImageFetcher
 
 # Set up logging
 logging.basicConfig(

@@ -152,7 +152,7 @@ async def on_shutdown():
 
 ### Manual Testing
 
-`test_instance_lock_manual.py` - Run in two terminals to verify locking
+`tests/test_instance_lock_manual.py` - Run in two terminals to verify locking
 
 ## Security
 
