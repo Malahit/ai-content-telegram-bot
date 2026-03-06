@@ -91,8 +91,14 @@ def upgrade() -> None:
     Works regardless of whether the table is named 'usage_events' or 'usageevents'
     and whether the column is 'created_at' or 'createdat'.
     Existing values are assumed to be UTC and are cast with AT TIME ZONE 'UTC'.
+
+    No-op on non-PostgreSQL databases (e.g. SQLite): TIMESTAMPTZ and
+    information_schema are PostgreSQL-specific features.
     """
     conn = op.get_bind()
+    # SQLite does not support TIMESTAMPTZ or information_schema; skip entirely.
+    if conn.dialect.name != "postgresql":
+        return
     found = _find_table_and_column(conn)
     if found is None:
         # Table does not exist yet (fresh DB); nothing to convert.
@@ -131,8 +137,13 @@ def downgrade() -> None:
     Revert the usage-events timestamp column from TIMESTAMPTZ back to naive TIMESTAMP.
 
     Values are converted from UTC-aware back to naive UTC using AT TIME ZONE 'UTC'.
+
+    No-op on non-PostgreSQL databases.
     """
     conn = op.get_bind()
+    # SQLite does not support TIMESTAMPTZ or information_schema; skip entirely.
+    if conn.dialect.name != "postgresql":
+        return
     found = _find_table_and_column(conn)
     if found is None:
         return
