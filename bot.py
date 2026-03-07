@@ -39,6 +39,7 @@ from logger_config import logger
 from api_client import api_client, PerplexityAPIError
 from translation_service import translation_service
 from rag_service import rag_service
+from version import get_version
 
 # Import database and user management
 from database.database import init_db, get_session
@@ -99,6 +100,7 @@ TELEGRAM_CAPTION_MAX_LENGTH = 1024
 # Log startup information (without sensitive data)
 logger.info("=" * 60)
 logger.info("AI Content Telegram Bot Starting...")
+logger.info(f"🔖 Deploy version: {get_version()}")
 logger.info("=" * 60)
 
 config_info = config.get_safe_config_info()
@@ -377,7 +379,8 @@ async def start_handler(message: types.Message):
     images_status = "🖼️ Images" if IMAGES_ENABLED else ""
 
     await message.answer(
-        f"<b>🚀 AI Content Bot v2.2 PROD {rag_status} {translate_status} {images_status}</b>\n\n"
+        f"<b>🚀 AI Content Bot v2.2 PROD {rag_status} {translate_status} {images_status}</b>\n"
+        f"🔖 Version: {get_version()}\n\n"
         f"💬 <i>Тема поста → готовый текст 200-300 слов!</i>\n\n"
         f"📡 Автопостинг: <code>{config.channel_id}</code> (каждые {config.autopost_interval_hours}ч)\n"
         f"⚙️ max_tokens={config.max_tokens} | {config.api_model}\n\n"
@@ -439,6 +442,7 @@ async def menu_handler(message: types.Message, state: FSMContext):
         await state.clear()
         await message.answer(
             f"✅ Bot: Online\n"
+            f"🔖 Version: {get_version()}\n"
             f"✅ Perplexity: {config.api_model}\n"
             f"📚 RAG: {'ON' if rag_service.is_enabled() else 'OFF'}\n"
             f"🌐 Translate: {'ON' if translation_service.is_enabled() else 'OFF'}\n"
@@ -1020,6 +1024,7 @@ async def on_startup():
     # every component is up without grepping through scattered log lines.
     logger.info("=" * 60)
     logger.info("🏥 Startup health summary:")
+    logger.info(f"  Deploy ver   : {get_version()}")
     logger.info("  Database     : ✅ initialized")
     logger.info(f"  Scheduler    : ✅ running  (every {config.autopost_interval_hours}h)")
     logger.info(f"  RAG          : {'✅ enabled' if rag_service.is_enabled() else '⚠️  disabled'}")
