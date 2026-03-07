@@ -10,6 +10,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -20,6 +21,38 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Declare enum types with create_type=False so SQLAlchemy
+    # does NOT automatically emit CREATE TYPE on sa.Column binding.
+    # We create each type explicitly with checkfirst=True so the
+    # migration is idempotent: safe on both a fresh DB and one that
+    # already has the types from a previously failed run.
+    tenant_status_enum = postgresql.ENUM(
+        "ACTIVE",
+        "SUSPENDED",
+        name="tenantstatus",
+        create_type=False,
+    )
+    membership_role_enum = postgresql.ENUM(
+        "OWNER",
+        "ADMIN",
+        "EDITOR",
+        "VIEWER",
+        name="membershiprole",
+        create_type=False,
+    )
+    usage_event_status_enum = postgresql.ENUM(
+        "SUCCESS",
+        "FAILED",
+        "BLOCKED",
+        name="usageeventstatus",
+        create_type=False,
+    )
+
+    bind = op.get_bind()
+    tenant_status_enum.create(bind, checkfirst=True)
+    membership_role_enum.create(bind, checkfirst=True)
+    usage_event_status_enum.create(bind, checkfirst=True)
+
     # Tenants
     op.create_table(
         "tenants",
@@ -28,7 +61,7 @@ def upgrade() -> None:
         sa.Column("owner_user_id", sa.Integer(), nullable=False),
         sa.Column(
             "status",
-            sa.Enum("ACTIVE", "SUSPENDED", name="tenantstatus"),
+            tenant_status_enum,
             nullable=False,
             server_default="ACTIVE",
         ),
@@ -57,7 +90,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column(
             "role",
-            sa.Enum("OWNER", "ADMIN", "EDITOR", "VIEWER", name="membershiprole"),
+            membership_role_enum,
             nullable=False,
             server_default="OWNER",
         ),
@@ -116,7 +149,7 @@ def upgrade() -> None:
         sa.Column("model", sa.String(length=100), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("SUCCESS", "FAILED", "BLOCKED", name="usageeventstatus"),
+            usage_event_status_enum,
             nullable=False,
             server_default="SUCCESS",
         ),
