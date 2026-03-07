@@ -40,7 +40,9 @@ async def check_tenant_budget(session, tenant_id: int) -> BudgetStatus:
     from services.pricing_service import get_budget_hard_limit_usd, get_budget_warn_limit_usd
     from database.models import UsageEvent, UsageEventStatus
 
-    now = datetime.now(timezone.utc)
+    # Use UTC time but strip tzinfo: the created_at column is
+    # TIMESTAMP WITHOUT TIME ZONE, so asyncpg requires naive datetimes.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     # next month:
     if start.month == 12:
