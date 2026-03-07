@@ -23,6 +23,11 @@ if config.config_file_name is not None:
 # PostgreSQL URL rather than the SQLite fallback in alembic.ini.
 _db_url = os.environ.get("DATABASE_URL")
 if _db_url:
+    # Railway and some older PaaS providers emit "postgres://" instead of
+    # "postgresql://".  SQLAlchemy 2.x requires the "postgresql://" scheme,
+    # so we normalise it here before passing the URL to Alembic.
+    if _db_url.startswith("postgres://"):
+        _db_url = "postgresql://" + _db_url[len("postgres://"):]
     config.set_main_option("sqlalchemy.url", _db_url)
 else:
     logger.warning(
