@@ -19,10 +19,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+
+    # Explicitly create enum types before using them in columns
+    userrole = sa.Enum('ADMIN', 'USER', 'GUEST', name='userrole')
+    userrole.create(bind, checkfirst=True)
+
+    userstatus = sa.Enum('ACTIVE', 'BANNED', name='userstatus')
+    userstatus.create(bind, checkfirst=True)
+
     # Add role and status columns to users table
     op.add_column('users', sa.Column('role', sa.Enum('ADMIN', 'USER', 'GUEST', name='userrole'), nullable=False, server_default='USER'))
     op.add_column('users', sa.Column('status', sa.Enum('ACTIVE', 'BANNED', name='userstatus'), nullable=False, server_default='ACTIVE'))
-    
+
     # Create logs table
     op.create_table('logs',
         sa.Column('id', sa.Integer(), autoincrement=True, nullable=False),
@@ -36,11 +45,20 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+
     # Drop logs table
     op.drop_index(op.f('ix_logs_timestamp'), table_name='logs')
     op.drop_index(op.f('ix_logs_user_id'), table_name='logs')
     op.drop_table('logs')
-    
+
     # Drop role and status columns from users table
     op.drop_column('users', 'status')
     op.drop_column('users', 'role')
+
+    # Drop enum types after removing dependent columns
+    userstatus = sa.Enum('ACTIVE', 'BANNED', name='userstatus')
+    userstatus.drop(bind, checkfirst=True)
+
+    userrole = sa.Enum('ADMIN', 'USER', 'GUEST', name='userrole')
+    userrole.drop(bind, checkfirst=True)
