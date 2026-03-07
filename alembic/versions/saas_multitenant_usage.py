@@ -20,6 +20,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Create enum types explicitly so PostgreSQL registers them before table creation
+    bind = op.get_bind()
+    sa.Enum("ACTIVE", "SUSPENDED", name="tenantstatus").create(bind, checkfirst=True)
+    sa.Enum("OWNER", "ADMIN", "EDITOR", "VIEWER", name="membershiprole").create(bind, checkfirst=True)
+    sa.Enum("SUCCESS", "FAILED", "BLOCKED", name="usageeventstatus").create(bind, checkfirst=True)
+
     # Tenants
     op.create_table(
         "tenants",
@@ -84,7 +90,7 @@ def upgrade() -> None:
         sa.Column("channel_username", sa.String(length=255), nullable=True),
         sa.Column("title", sa.String(length=255), nullable=True),
         sa.Column("language_default", sa.String(length=16), nullable=True),
-        sa.Column("autopost_enabled", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("autopost_enabled", sa.Boolean(), nullable=False, server_default=sa.text("false")),
         sa.Column("autopost_interval_hours", sa.Integer(), nullable=False, server_default="6"),
         sa.Column(
             "created_at",
