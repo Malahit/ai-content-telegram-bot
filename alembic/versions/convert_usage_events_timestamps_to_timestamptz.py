@@ -8,6 +8,10 @@ This migration detects the actual table and column names present in the database
 (handling both 'usage_events'/'usageevents' and 'created_at'/'createdat' variants)
 and converts the timestamp column to TIMESTAMPTZ, treating existing naive values as UTC.
 
+Uses SQLAlchemy Inspector for dialect-agnostic table/column discovery (works on
+both SQLite and PostgreSQL).  The actual ALTER TABLE is PostgreSQL-only and is
+guarded by a dialect check; all other databases receive a silent no-op.
+
 """
 
 from typing import Sequence, Union, Optional, Tuple
@@ -22,14 +26,12 @@ down_revision: Union[str, None] = "saas_multitenant_usage"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# Exhaustive allow-lists guard against unexpected values from information_schema.
-_ALLOWED_TABLES = frozenset({"usage_events", "usageevents"})
-_ALLOWED_COLUMNS = frozenset({"created_at", "createdat"})
-
 
 def _find_table_and_column(conn) -> Optional[Tuple[str, str]]:
     """
     Detect which usage-events table and timestamp column exist in this database.
+
+    Uses SQLAlchemy Inspector so it works on SQLite as well as PostgreSQL.
 
     Checks for (in priority order):
       1. usage_events / created_at  (new standard naming)
@@ -39,49 +41,40 @@ def _find_table_and_column(conn) -> Optional[Tuple[str, str]]:
 
     Returns (table_name, column_name) for the first match, or None if not found.
     """
-    result = conn.execute(
-        sa.text(
-            """
-            SELECT table_name, column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name   IN ('usage_events', 'usageevents')
-              AND column_name  IN ('created_at', 'createdat')
-            ORDER BY
-              CASE table_name  WHEN 'usage_events' THEN 1 ELSE 2 END,
-              CASE column_name WHEN 'created_at'   THEN 1 ELSE 2 END
-            LIMIT 1
-            """
-        )
-    )
-    row = result.fetchone()
-    if row is None:
-        return None
-    table_name, col_name = row[0], row[1]
-    # Validate against the allow-list before using in dynamic SQL.
-    if table_name not in _ALLOWED_TABLES or col_name not in _ALLOWED_COLUMNS:
-        raise ValueError(
-            f"Unexpected table/column from information_schema: {table_name!r}.{col_name!r}"
-        )
-    return (table_name, col_name)
+    inspector = sa.inspect(conn)
+    existing_tables = set(inspector.get_table_names())
+    for table_name in ("usage_events", "usageevents"):
+        if table_name not in existing_tables:
+            continue
+        col_names = {c["name"] for c in inspector.get_columns(table_name)}
+        for col_name in ("created_at", "createdat"):
+            if col_name in col_names:
+                return (table_name, col_name)
+    return None
 
 
-def _column_data_type(conn, table_name: str, col_name: str) -> Optional[str]:
-    """Return the information_schema data_type string for a column, or None."""
-    result = conn.execute(
-        sa.text(
-            """
-            SELECT data_type
-            FROM information_schema.columns
-            WHERE table_schema = current_schema()
-              AND table_name   = :tbl
-              AND column_name  = :col
-            """
-        ),
-        {"tbl": table_name, "col": col_name},
-    )
-    row = result.fetchone()
-    return row[0] if row else None
+def _column_is_timestamptz(conn, table_name: str, col_name: str) -> bool:
+    """
+    Return True if *col_name* in *table_name* is already TIMESTAMP WITH TIME ZONE.
+
+    Uses SQLAlchemy Inspector column type metadata so it works on any dialect.
+    Falls back to a string match for dialects that do not expose a ``timezone``
+    attribute on their type objects.
+    """
+    inspector = sa.inspect(conn)
+    for col in inspector.get_columns(table_name):
+        if col["name"] != col_name:
+            continue
+        col_type = col["type"]
+        # Primary check: SQLAlchemy sets .timezone = True for TIMESTAMPTZ columns.
+        if hasattr(col_type, "timezone") and col_type.timezone:
+            return True
+        # Fallback: string representation for dialects that don't expose .timezone.
+        type_str = str(col_type).upper()
+        if "TIME ZONE" in type_str or "TIMESTAMPTZ" in type_str:
+            return True
+        return False
+    return False
 
 
 def upgrade() -> None:
@@ -92,11 +85,11 @@ def upgrade() -> None:
     and whether the column is 'created_at' or 'createdat'.
     Existing values are assumed to be UTC and are cast with AT TIME ZONE 'UTC'.
 
-    No-op on non-PostgreSQL databases (e.g. SQLite): TIMESTAMPTZ and
-    information_schema are PostgreSQL-specific features.
+    No-op on non-PostgreSQL databases (e.g. SQLite): TIMESTAMPTZ conversion is
+    a PostgreSQL-specific operation.
     """
     conn = op.get_bind()
-    # SQLite does not support TIMESTAMPTZ or information_schema; skip entirely.
+    # TIMESTAMPTZ ALTER TABLE is PostgreSQL-only; skip on all other dialects.
     if conn.dialect.name != "postgresql":
         return
     found = _find_table_and_column(conn)
@@ -106,8 +99,7 @@ def upgrade() -> None:
 
     table_name, col_name = found
 
-    current_type = _column_data_type(conn, table_name, col_name)
-    if current_type == "timestamp with time zone":
+    if _column_is_timestamptz(conn, table_name, col_name):
         # Already TIMESTAMPTZ – idempotent, nothing to do.
         return
 
@@ -141,7 +133,7 @@ def downgrade() -> None:
     No-op on non-PostgreSQL databases.
     """
     conn = op.get_bind()
-    # SQLite does not support TIMESTAMPTZ or information_schema; skip entirely.
+    # TIMESTAMPTZ ALTER TABLE is PostgreSQL-only; skip on all other dialects.
     if conn.dialect.name != "postgresql":
         return
     found = _find_table_and_column(conn)
@@ -150,9 +142,8 @@ def downgrade() -> None:
 
     table_name, col_name = found
 
-    current_type = _column_data_type(conn, table_name, col_name)
-    if current_type != "timestamp with time zone":
-        # Already naive – nothing to revert.
+    if not _column_is_timestamptz(conn, table_name, col_name):
+        # Already naive TIMESTAMP – nothing to revert.
         return
 
     idx_name = f"ix_{table_name}_{col_name}"
