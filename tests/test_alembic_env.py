@@ -6,6 +6,8 @@ Covers:
   ``DATABASE_URL`` environment variable so that Railway (and any production
   environment) uses a PostgreSQL URL rather than the SQLite fallback in
   alembic.ini.
+- postgres:// → postgresql:// normalization so that Railway-style DATABASE_URL
+  values are accepted by SQLAlchemy 2.x.
 
 Uses AST and source-text inspection to avoid running the full Alembic
 bootstrap (which requires a live database connection) during tests.
@@ -187,6 +189,40 @@ class TestAlembicEnvConfig(unittest.TestCase):
             ast.parse(self.source)
         except SyntaxError as exc:
             self.fail(f"alembic/env.py has a syntax error: {exc}")
+
+
+class TestPostgresUrlNormalization(unittest.TestCase):
+    """
+    env.py must rewrite the legacy ``postgres://`` scheme to ``postgresql://``
+    so that SQLAlchemy 2.x (which dropped support for the short alias) can
+    accept the URL produced by Railway and similar PaaS providers.
+    """
+
+    def test_source_contains_postgres_to_postgresql_conversion(self):
+        """env.py must rewrite postgres:// to postgresql:// before using the URL."""
+        source = _read_env()
+        self.assertIn(
+            "postgres://",
+            source,
+            "alembic/env.py must reference the 'postgres://' prefix to detect and rewrite it",
+        )
+        self.assertIn(
+            "postgresql://",
+            source,
+            "alembic/env.py must produce a 'postgresql://' URL after normalization",
+        )
+
+    def test_normalization_logic_replaces_prefix(self):
+        """The normalization logic must replace the prefix, not the whole URL."""
+        source = _read_env()
+        # Verify that the replacement is guarded by a startswith-style check
+        # (string 'postgres://' must appear as a prefix condition, not just
+        # as a bare substring replacement that could mangle unrelated URLs).
+        self.assertIn(
+            'startswith("postgres://")',
+            source,
+            "alembic/env.py must use startswith(\"postgres://\") to guard the normalization",
+        )
 
 
 if __name__ == "__main__":
