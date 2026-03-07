@@ -34,7 +34,7 @@ def upgrade() -> None:
         sa.Column("owner_user_id", sa.Integer(), nullable=False),
         sa.Column(
             "status",
-            sa.Enum("ACTIVE", "SUSPENDED", name="tenantstatus"),
+            sa.Enum("ACTIVE", "SUSPENDED", name="tenantstatus", create_type=False),
             nullable=False,
             server_default="ACTIVE",
         ),
@@ -63,7 +63,7 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column(
             "role",
-            sa.Enum("OWNER", "ADMIN", "EDITOR", "VIEWER", name="membershiprole"),
+            sa.Enum("OWNER", "ADMIN", "EDITOR", "VIEWER", name="membershiprole", create_type=False),
             nullable=False,
             server_default="OWNER",
         ),
@@ -122,7 +122,7 @@ def upgrade() -> None:
         sa.Column("model", sa.String(length=100), nullable=True),
         sa.Column(
             "status",
-            sa.Enum("SUCCESS", "FAILED", "BLOCKED", name="usageeventstatus"),
+            sa.Enum("SUCCESS", "FAILED", "BLOCKED", name="usageeventstatus", create_type=False),
             nullable=False,
             server_default="SUCCESS",
         ),
