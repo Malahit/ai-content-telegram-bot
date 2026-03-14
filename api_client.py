@@ -102,6 +102,8 @@ class APIClient:
             "max_tokens": max_tokens or self.max_tokens,
             "temperature": self.temperature
         }
+
+        logger.debug(f"Perplexity request: model={self.api_model}, max_tokens={max_tokens or self.max_tokens}")
         
         try:
             response = await self.client.post(url, json=payload, headers=headers)
@@ -120,7 +122,15 @@ class APIClient:
                 logger.critical("❌ Invalid Perplexity API key!")
                 raise PerplexityAPIError("Invalid API key")
             else:
-                logger.error(f"Perplexity API error: {e.response.status_code}")
+                # Log full response body so the exact Perplexity error is visible in Railway logs
+                try:
+                    error_body = e.response.json()
+                except Exception:
+                    error_body = e.response.text
+                logger.error(
+                    f"Perplexity API error: {e.response.status_code} | "
+                    f"model={self.api_model} | body={error_body}"
+                )
                 raise PerplexityAPIError(f"API error: {e.response.status_code}")
         
         except Exception as e:
@@ -174,6 +184,8 @@ KEYWORD: <single keyword>"""
             "max_tokens": max_tokens or self.max_tokens,
             "temperature": self.temperature
         }
+
+        logger.debug(f"Perplexity request: model={self.api_model}, max_tokens={max_tokens or self.max_tokens}")
         
         try:
             response = await self.client.post(url, json=payload, headers=headers)
@@ -212,7 +224,15 @@ KEYWORD: <single keyword>"""
                 logger.critical("❌ Invalid Perplexity API key!")
                 raise PerplexityAPIError("Invalid API key")
             else:
-                logger.error(f"Perplexity API error: {e.response.status_code}")
+                # Log full response body so the exact Perplexity error is visible in Railway logs
+                try:
+                    error_body = e.response.json()
+                except Exception:
+                    error_body = e.response.text
+                logger.error(
+                    f"Perplexity API error: {e.response.status_code} | "
+                    f"model={self.api_model} | body={error_body}"
+                )
                 raise PerplexityAPIError(f"API error: {e.response.status_code}")
         
         except Exception as e:
