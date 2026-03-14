@@ -45,7 +45,8 @@ class Config:
         self.database_url: Optional[str] = _env("DATABASE_URL", required=False)
 
         # Perplexity/API params expected by api_client.py
-        self.api_model: str = _env("API_MODEL", required=False, default="sonar-small") or "sonar-small"
+        # Default changed from deprecated "sonar-small" to "sonar"
+        self.api_model: str = _env("API_MODEL", required=False, default="sonar") or "sonar"
         self.api_timeout: int = int(_env("API_TIMEOUT", required=False, default="30") or "30")
         self.max_tokens: int = int(_env("MAX_TOKENS", required=False, default="800") or "800")
         self.temperature: float = float(_env("TEMPERATURE", required=False, default="0.7") or "0.7")
