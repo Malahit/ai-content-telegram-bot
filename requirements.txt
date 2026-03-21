@@ -18,3 +18,11 @@ asyncpg
 SQLAlchemy>=2.0.46,<3.0
 alembic==1.13.1
 aiosqlite==0.19.0
+
+# RAG dependencies
+langchain>=0.1.0
+langchain-community>=0.0.20
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.4
+pypdf>=3.0.0
+chromadb>=0.4.0
