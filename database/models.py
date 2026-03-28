@@ -103,7 +103,6 @@ class Payment(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
-    # NOTE: existing schema uses BigInteger here; keep backward compatibility.
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -231,8 +230,6 @@ class Channel(Base):
     tenant_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
-
-    # Store as string to support formats like @channel or numeric id.
     telegram_channel_id: Mapped[str] = mapped_column(String(255), nullable=False)
     channel_username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -295,7 +292,12 @@ class UsageEvent(Base):
     cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), default=0, nullable=False)
     latency_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+        index=True,
+    )
 
     tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="usage_events")
     channel: Mapped[Optional["Channel"]] = relationship("Channel", back_populates="usage_events")
@@ -304,4 +306,28 @@ class UsageEvent(Base):
         return (
             f"<UsageEvent(id={self.id}, tenant_id={self.tenant_id}, provider={self.provider}, "
             f"status={self.status.value}, cost_usd={self.cost_usd})>"
+        )
+
+
+# -----------------
+# Topic Subscriptions
+# -----------------
+
+
+class TopicSubscription(Base):
+    """Подписка пользователя на ежедневные посты по теме."""
+    __tablename__ = "topic_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    topic: Mapped[str] = mapped_column(String(500), nullable=False)
+    send_hour_utc: Mapped[int] = mapped_column(Integer, default=8, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    last_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    def __repr__(self) -> str:
+        return (
+            f"<TopicSubscription(id={self.id}, telegram_id={self.telegram_id}, "
+            f"topic='{self.topic}', hour={self.send_hour_utc})>"
         )
