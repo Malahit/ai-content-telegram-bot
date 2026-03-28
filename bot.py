@@ -25,7 +25,10 @@ from bs4 import BeautifulSoup
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart, Command
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto
+from aiogram.types import (
+    ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto,
+    InlineKeyboardMarkup, InlineKeyboardButton,
+)
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -50,7 +53,7 @@ from services import user_service
 from services.tenant_service import resolve_user_and_tenant
 from services.budget_service import check_tenant_budget, should_send_budget_warning, mark_budget_warned
 from services.pricing_service import estimate_tokens_conservative, calculate_cost_usd
-from services.usage_service import record_usage_event, record_blocked_usage_event
+from services.usage_service import record_usage_event, record_blocked_usage_event, get_today_post_count, get_total_post_count
 
 # Import utils for instance management
 from utils import InstanceLock, is_another_instance_running, shutdown_manager, PollingManager
@@ -106,6 +109,17 @@ ADMIN_USER_IDS = config.admin_user_ids
 # Telegram caption length limit
 TELEGRAM_CAPTION_MAX_LENGTH = 1024
 
+# Watermark for free users
+WATERMARK = "\n\n—\n📝 Создано в @ai_content_helper_bot"
+
+# Share inline keyboard
+SHARE_KB = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(
+        text="📤 Поделиться ботом",
+        url="https://t.me/share/url?url=https://t.me/ai_content_helper_bot&text=AI-бот генерирует посты для TG-каналов за 15 секунд. 3 поста в день бесплатно!",
+    )]
+])
+
 # Log startup information (without sensitive data)
 logger.info("=" * 60)
 logger.info("AI Content Telegram Bot Starting...")
@@ -148,8 +162,8 @@ dp.include_router(autopost_router)  # autopost first (handles successful_payment
 dp.include_router(subscription_router)
 dp.include_router(topic_sub_router)
 
-# Register subscription middleware.
-dp.message.middleware(SubscriptionMiddleware(premium_commands=[]))
+# Register subscription middleware (enforces daily limit on content generation).
+dp.message.middleware(SubscriptionMiddleware())
 
 # Global scheduler instance
 scheduler: Optional[AsyncIOScheduler] = None
@@ -422,6 +436,11 @@ async def menu_handler(message: types.Message, state: FSMContext):
             "• 📬 <b>Подписки</b> — ежедневные посты по теме (/subscribe)\n"
             "• Пиши тему, получи готовый контент!\n"
             "• 🌐 Авто RU/EN перевод\n\n"
+            "💎 <b>Pro подписка:</b>\n"
+            "• 30 постов/день (вместо 3)\n"
+            "• Продвинутая модель AI\n"
+            "• Без водяного знака\n"
+            "• /subscribe — оформить подписку\n\n"
             "<b>Команды:</b>\n"
             "/start — Начало\n"
             "/subscribe — Подписка на ежедневные посты\n"
@@ -431,6 +450,23 @@ async def menu_handler(message: types.Message, state: FSMContext):
         )
     elif message.text == "ℹ️ Статус":
         await state.clear()
+        from services.user_service import is_premium as _check_premium
+        from middlewares.subscription_middleware import FREE_DAILY_LIMIT as _free_lim, PRO_DAILY_LIMIT as _pro_lim
+        _uid = message.from_user.id
+        _user = await user_service.get_user(_uid)
+        _is_prem = await _check_premium(_uid) if _user else False
+        _today = await get_today_post_count(_uid)
+        _total = await get_total_post_count(_uid)
+        if _is_prem and _user and _user.subscription_end:
+            _expiry = _user.subscription_end.strftime("%d.%m.%Y")
+            _tariff = f"Pro (до {_expiry})"
+            _limit = _pro_lim
+            _model = "sonar-pro"
+        else:
+            _tariff = "Free"
+            _limit = _free_lim
+            _model = "sonar-small"
+
         # Подсчёт активных автопостов пользователя
         autopost_count = 0
         try:
@@ -441,14 +477,14 @@ async def menu_handler(message: types.Message, state: FSMContext):
                 autopost_count = len(user_autoposts)
         except Exception:
             pass
+
         await message.answer(
-            f"✅ Bot: Online\n"
-            f"🔖 Version: {get_version()}\n"
-            f"✅ Perplexity: {config.api_model}\n"
-            f"📚 RAG: {'ON' if rag_service.is_enabled() else 'OFF'}\n"
-            f"🌐 Translate: {'ON' if translation_service.is_enabled() else 'OFF'}\n"
-            f"⏰ Автопост: каждые {config.autopost_interval_hours}ч → {config.channel_id}\n"
-            f"📬 Ваши автопосты: {autopost_count}"
+            f"📊 <b>Ваш статус:</b>\n"
+            f"├ Тариф: <b>{_tariff}</b>\n"
+            f"├ Постов сегодня: <b>{_today}/{_limit}</b>\n"
+            f"├ Модель: <b>{_model}</b>\n"
+            f"├ Всего создано: <b>{_total}</b> постов\n"
+            f"└ 📬 Ваши автопосты: {autopost_count}"
         )
     elif message.text == "📊 Статистика":
         await state.clear()
@@ -498,7 +534,6 @@ async def list_users(message: types.Message):
         return
 
     users = await user_service.get_all_users(limit=30)
-С 501 по 713
     if not users:
         await message.answer("📋 <b>Нет зарегистрированных пользователей</b>")
         return
@@ -711,7 +746,7 @@ async def user_info_command(message: types.Message):
     )
 
     await message.answer(user_info)
-715 -931
+
 # ==================== End Admin Commands ====================
 
 
@@ -799,6 +834,11 @@ async def generate_post(message: types.Message, state: FSMContext):
                 safe_content = safe_html(content)
                 logger.debug(f"HTML sanitized: {len(content)}→{len(safe_content)} chars")
 
+                # Add watermark for free users
+                user_is_premium = data.get("is_premium", False)
+                if not user_is_premium:
+                    safe_content += WATERMARK
+
                 # Estimate tokens conservatively (MVP)
                 tokens_in = estimate_tokens_conservative(topic + (rag_context or ""))
                 tokens_out = estimate_tokens_conservative(raw_content_for_tokens)
@@ -829,7 +869,17 @@ async def generate_post(message: types.Message, state: FSMContext):
                     action=f"Generated post: '{safe_topic}' (type: {post_type})",
                 )
 
-                # Image sending
+                # Send generated post
+                async def _send_text_post():
+                    try:
+                        await message.answer(
+                            f"<b>✨ Готовый пост:</b>\n\n{safe_content}",
+                            parse_mode="HTML",
+                        )
+                    except TelegramBadRequest as e:
+                        logger.warning(f"HTML parse error, falling back to plain text: {e}")
+                        await message.answer(f"✨ Готовый пост:\n\n{safe_content}")
+
                 if IMAGES_ENABLED and image_fetcher:
                     await message.answer("🖼️ Ищу фото...")
 
@@ -858,39 +908,21 @@ async def generate_post(message: types.Message, state: FSMContext):
                             logger.warning(
                                 f"No photo found for keyword '{search_keyword}', fallback to text"
                             )
-                            try:
-                                await message.answer(
-                                    f"<b>✨ Готовый пост:</b>\n\n{safe_content}",
-                                    parse_mode="HTML",
-                                )
-                            except TelegramBadRequest as e:
-                                logger.warning(
-                                    f"HTML parse error, falling back to plain text: {e}"
-                                )
-                                await message.answer(f"✨ Готовый пост:\n\n{safe_content}")
+                            await _send_text_post()
                     except Exception as e:
                         logger.error(
                             f"Error fetching photo for '{search_keyword}' (user {telegram_user_id}): {e}",
                             exc_info=True,
                         )
-                        try:
-                            await message.answer(
-                                f"<b>✨ Готовый пост:</b>\n\n{safe_content}",
-                                parse_mode="HTML",
-                            )
-                        except TelegramBadRequest as e:
-                            logger.warning(
-                                f"HTML parse error, falling back to plain text: {e}"
-                            )
-                            await message.answer(f"✨ Готовый пост:\n\n{safe_content}")
+                        await _send_text_post()
                 else:
-                    try:
-                        await message.answer(
-                            f"<b>✨ Готовый пост:</b>\n\n{safe_content}", parse_mode="HTML"
-                        )
-                    except TelegramBadRequest as e:
-                        logger.warning(f"HTML parse error, falling back to plain text: {e}")
-                        await message.answer(f"✨ Готовый пост:\n\n{safe_content}")
+                    await _send_text_post()
+
+                # Share button after every generated post
+                await message.answer(
+                    "👆 Скопируйте пост выше и опубликуйте в своём канале!",
+                    reply_markup=SHARE_KB,
+                )
 
             except PerplexityAPIError as e:
                 latency_ms = int((time.perf_counter() - generation_start) * 1000)

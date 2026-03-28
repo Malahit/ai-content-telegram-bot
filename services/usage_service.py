@@ -1,6 +1,62 @@
 from __future__ import annotations
 
+from datetime import datetime, time, timezone
+
+from sqlalchemy import select, func
+
 from database.models import UsageEvent, UsageEventStatus
+from database.database import AsyncSessionLocal
+
+
+async def get_today_post_count(telegram_id: int) -> int:
+    """Count successful posts by user today (UTC).
+
+    Uses the UsageEvent table joined via user_id (internal PK)
+    to count SUCCESS events created today.
+    """
+    from database.models import User
+
+    now = datetime.now(timezone.utc)
+    today_start = datetime.combine(now.date(), time.min, tzinfo=timezone.utc)
+
+    async with AsyncSessionLocal() as session:
+        # Resolve internal user_id from telegram_id
+        user_result = await session.execute(
+            select(User.id).where(User.telegram_id == telegram_id)
+        )
+        user_pk = user_result.scalar_one_or_none()
+        if user_pk is None:
+            return 0
+
+        result = await session.execute(
+            select(func.count(UsageEvent.id)).where(
+                UsageEvent.user_id == user_pk,
+                UsageEvent.status == UsageEventStatus.SUCCESS,
+                UsageEvent.created_at >= today_start,
+            )
+        )
+        return result.scalar() or 0
+
+
+async def get_total_post_count(telegram_id: int) -> int:
+    """Count all successful posts by user (all time)."""
+    from database.models import User
+
+    async with AsyncSessionLocal() as session:
+        user_result = await session.execute(
+            select(User.id).where(User.telegram_id == telegram_id)
+        )
+        user_pk = user_result.scalar_one_or_none()
+        if user_pk is None:
+            return 0
+
+        result = await session.execute(
+            select(func.count(UsageEvent.id)).where(
+                UsageEvent.user_id == user_pk,
+                UsageEvent.status == UsageEventStatus.SUCCESS,
+            )
+        )
+        return result.scalar() or 0
 
 
 async def record_usage_event(
