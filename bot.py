@@ -56,8 +56,11 @@ from services.usage_service import record_usage_event, record_blocked_usage_even
 from utils import InstanceLock, is_another_instance_running, shutdown_manager, PollingManager
 
 # Subscription / payment handlers
-from handlers import subscription_router
+from handlers import subscription_router, topic_sub_router
 from middlewares import SubscriptionMiddleware
+
+# Topic subscription service
+from services.subscription_topic_service import get_all_active_subscriptions, mark_sent
 
 # Import statistics and image fetcher from main
 try:
@@ -73,12 +76,10 @@ except ImportError:
 try:
     from services.image_fetcher import ImageFetcher
 
-    # Initialize with both API keys
     image_fetcher = ImageFetcher(
         pexels_key=config.pexels_api_key,
         pixabay_key=config.pixabay_api_key,
     )
-    # Images are enabled if at least one API key is configured
     IMAGES_ENABLED = bool(config.pexels_api_key or config.pixabay_api_key)
     if IMAGES_ENABLED:
         logger.info(
@@ -136,10 +137,9 @@ dp = Dispatcher(storage=MemoryStorage())
 
 # Register subscription / payment router
 dp.include_router(subscription_router)
+dp.include_router(topic_sub_router)
 
 # Register subscription middleware.
-# premium_commands is empty by default so the middleware is a pass-through
-# until specific commands are added to the premium gate.
 dp.message.middleware(SubscriptionMiddleware(premium_commands=[]))
 
 # Global scheduler instance
@@ -149,22 +149,21 @@ scheduler: Optional[AsyncIOScheduler] = None
 # FSM States for post generation
 class PostGeneration(StatesGroup):
     waiting_for_topic = State()
-    post_type = State()  # "text" or "images"
+    post_type = State()  # "text" only now
 
 
 # Main keyboard for all users
 kb = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="🖼️ Пост с фото")],
+        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="📬 Подписки")],
         [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ Статус")],
     ],
     resize_keyboard=True,
 )
-
 # Admin keyboard with statistics button
 kb_admin = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="🖼️ Пост с фото")],
+        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="📬 Подписки")],
         [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ Статус")],
         [KeyboardButton(text="📊 Статистика")],
     ],
@@ -199,19 +198,19 @@ def sanitize_content(content: str) -> str:
     """
 
     # Remove citation numbers in parentheses: (1), (123), etc.
-    content = re.sub(r"\(\d+\)", "", content)
+    content = re.sub(r"\\(\d+\\)", "", content)
 
     # Remove citation numbers in brackets: [1], [12], etc.
-    content = re.sub(r"\[\d+\]", "", content)
+    content = re.sub(r"\\[\d+\\]", "", content)
 
     # Remove markdown links [text](url) - keep text, remove URL
-    content = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", content)
+    content = re.sub(r"\\[([^\\]]+)\]\\([^)]+\\)", r"\1", content)
 
     # Remove standalone URLs
     content = re.sub(r"https?://[^\s]+", "", content)
 
     # Remove standalone brackets that might be left
-    content = re.sub(r"\[\]", "", content)
+    content = re.sub(r"\\[\\]", "", content)
 
     # Clean up excessive whitespace
     content = re.sub(r"\s+", " ", content)
@@ -241,7 +240,6 @@ def safe_html(content: str) -> str:
     """
 
     # First, remove invalid tags like <1>, <2>, <123>, etc. before BeautifulSoup processing
-    # This prevents them from being HTML-escaped
     content = re.sub(r"</?(\d+)[^>]*>", "", content)
 
     # Parse the content with BeautifulSoup
@@ -253,22 +251,18 @@ def safe_html(content: str) -> str:
     # Remove or unwrap unsupported tags
     for tag in soup.find_all(True):
         if tag.name not in allowed_tags:
-            # Unwrap the tag (keep content, remove tag)
             tag.unwrap()
         elif tag.name == "a":
-            # For anchor tags, unwrap if no valid href attribute
             href = tag.get("href", "")
             if not href or href == "#":
                 tag.unwrap()
             else:
-                # Keep only href attribute for valid links
                 tag.attrs = {"href": href}
 
     # Convert back to string
     cleaned = str(soup)
 
     # Remove any remaining HTML-like patterns that aren't valid tags
-    # This catches remaining unsupported tags
     cleaned = re.sub(
         r"<(?![/]?(?:b|i|u|s|code|pre|a|strong|em)(?:\s|>))[^>]*>", "", cleaned
     )
@@ -312,7 +306,7 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
             translated, lang = await translation_service.detect_and_translate(content)
             content = translation_service.add_language_marker(translated, lang)
 
-        # Add RAG info if available (only if there is RAG info to add)
+        # Add RAG info if available
         if rag_info:
             generated_content = f"{content}{rag_info}"
         else:
@@ -327,8 +321,6 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
     except Exception as e:
         logger.error(f"Unexpected error during content generation: {e}", exc_info=True)
         return "❌ Произошла ошибка. Пожалуйста, попробуйте снова."
-
-
 @dp.message(CommandStart())
 async def start_handler(message: types.Message):
     """
@@ -376,10 +368,9 @@ async def start_handler(message: types.Message):
 
     rag_status = "✅ RAG" if rag_service.is_enabled() else "⚠️ Без RAG"
     translate_status = "🌐 RU/EN" if translation_service.is_enabled() else ""
-    images_status = "🖼️ Images" if IMAGES_ENABLED else ""
 
     await message.answer(
-        f"<b>🚀 AI Content Bot v2.2 PROD {rag_status} {translate_status} {images_status}</b>\n"
+        f"<b>🚀 AI Content Bot v2.2 PROD {rag_status} {translate_status}</b>\n"
         f"🔖 Version: {get_version()}\n\n"
         f"💬 <i>Тема поста → готовый текст 200-300 слов!</i>\n\n"
         f"📡 Автопостинг: <code>{config.channel_id}</code> (каждые {config.autopost_interval_hours}ч)\n"
@@ -407,20 +398,6 @@ async def text_post_handler(message: types.Message, state: FSMContext):
     await message.answer(f"✍️ <b>Напиши тему поста</b> ({rag_status})!")
 
 
-@dp.message(F.text == "🖼️ Пост с фото")
-async def image_post_handler(message: types.Message, state: FSMContext):
-    """Handle post with images request"""
-
-    if not IMAGES_ENABLED:
-        await message.answer("❌ <b>Генерация изображений недоступна</b>\nAPI ключ Pexels не настроен.")
-        return
-
-    await state.set_state(PostGeneration.waiting_for_topic)
-    await state.update_data(post_type="images")
-    rag_status = "с RAG" if rag_service.is_enabled() else "обычный"
-    await message.answer(f"✍️ <b>Напиши тему поста с фото</b> ({rag_status})!")
-
-
 @dp.message(F.text.in_({"❓ Помощь", "ℹ️ Статус", "📊 Статистика"}))
 async def menu_handler(message: types.Message, state: FSMContext):
     """Handle menu button presses."""
@@ -431,11 +408,11 @@ async def menu_handler(message: types.Message, state: FSMContext):
         await state.clear()
         await message.answer(
             "🎯 <b>Как использовать:</b>\n"
-            "• 📝 <b>Пост</b> - только текст\n"
-            "• 🖼️ <b>Пост с фото</b> - текст + до 3 изображений\n"
+            "• 📝 <b>Пост</b> — сгенерировать текст\n"
+            "• 📬 <b>Подписки</b> — ежедневные посты по теме\n"
             "• Пиши тему, получи готовый контент!\n"
             "• 🌐 Авто RU/EN перевод\n\n"
-            "<b>Команды:</b> /start\n"
+            "<b>Команды:</b> /start | /subscribe | /my_subscriptions\n"
             "<code>Техподдержка: @твой_nick</code>"
         )
     elif message.text == "ℹ️ Статус":
@@ -446,7 +423,6 @@ async def menu_handler(message: types.Message, state: FSMContext):
             f"✅ Perplexity: {config.api_model}\n"
             f"📚 RAG: {'ON' if rag_service.is_enabled() else 'OFF'}\n"
             f"🌐 Translate: {'ON' if translation_service.is_enabled() else 'OFF'}\n"
-            f"🖼️ Images: {'ON' if IMAGES_ENABLED else 'OFF'}\n"
             f"⏰ Автопост: каждые {config.autopost_interval_hours}ч → {config.channel_id}"
         )
     elif message.text == "📊 Статистика":
@@ -497,7 +473,7 @@ async def list_users(message: types.Message):
         return
 
     users = await user_service.get_all_users(limit=30)
-
+С 501 по 713
     if not users:
         await message.answer("📋 <b>Нет зарегистрированных пользователей</b>")
         return
@@ -710,8 +686,7 @@ async def user_info_command(message: types.Message):
     )
 
     await message.answer(user_info)
-
-
+715 -931
 # ==================== End Admin Commands ====================
 
 
@@ -928,8 +903,6 @@ async def generate_post(message: types.Message, state: FSMContext):
         await message.answer("❌ Произошла ошибка. Пожалуйста, попробуйте снова.")
 
     await state.clear()
-
-
 # Autoposter configuration
 AUTOPOST_TOPICS = ["SMM Москва", "фитнес", "питание", "мотивация", "бизнес"]
 
@@ -998,6 +971,32 @@ async def auto_post():
         logger.error(f"❌ Ошибка автопоста: {e}", exc_info=True)
 
 
+async def daily_topic_posts():
+    """Ежедневная рассылка постов подписчикам по их темам."""
+    from datetime import datetime, timezone
+    current_hour = datetime.now(timezone.utc).hour
+    logger.info(f"📬 daily_topic_posts: hour={current_hour}")
+
+    async with get_session() as session:
+        subs = await get_all_active_subscriptions(session)
+
+    for sub in subs:
+        if sub.send_hour_utc != current_hour:
+            continue
+        try:
+            content = await generate_content(sub.topic)
+            safe_content = safe_html(content)
+            await bot.send_message(
+                sub.telegram_id,
+                f"📬 <b>Ваш ежедневный пост по теме «{sub.topic}»:</b>\n\n{safe_content}",
+            )
+            async with get_session() as s:
+                await mark_sent(s, sub.id)
+            logger.info(f"✅ Daily post sent to {sub.telegram_id}, topic='{sub.topic}'")
+        except Exception as e:
+            logger.error(f"❌ Daily post failed for {sub.telegram_id}: {e}")
+
+
 async def on_startup():
     """Bot startup function."""
 
@@ -1015,13 +1014,13 @@ async def on_startup():
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(auto_post, "interval", hours=config.autopost_interval_hours)
+    scheduler.add_job(daily_topic_posts, "interval", hours=1)
     scheduler.start()
     logger.info(
         f"🚀 Автопостинг запущен: каждые {config.autopost_interval_hours}ч → {config.channel_id}"
     )
+    logger.info("📬 Daily topic subscriptions scheduler started (every 1h)")
 
-    # Single-glance health summary so Railway/production operators can confirm
-    # every component is up without grepping through scattered log lines.
     logger.info("=" * 60)
     logger.info("🏥 Startup health summary:")
     logger.info(f"  Deploy ver   : {get_version()}")
@@ -1032,6 +1031,7 @@ async def on_startup():
         f"  Translation  : {'✅ enabled' if translation_service.is_enabled() else '⚠️  disabled'}"
     )
     logger.info(f"  Images       : {'✅ enabled' if IMAGES_ENABLED else '⚠️  disabled (no API keys)'}")
+    logger.info(f"  Subscriptions: ✅ enabled (daily_topic_posts)")
     logger.info("=" * 60)
 
     shutdown_manager.register_callback(on_shutdown)
@@ -1075,8 +1075,6 @@ async def on_shutdown():
 async def main():
     """Main entry point."""
 
-    # Validate startup configuration early – logs clear warnings for absent
-    # optional-but-important settings (e.g. DATABASE_URL) before anything else runs.
     config.validate_startup()
 
     if is_another_instance_running():
