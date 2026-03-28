@@ -59,11 +59,19 @@ from services.usage_service import record_usage_event, record_blocked_usage_even
 from utils import InstanceLock, is_another_instance_running, shutdown_manager, PollingManager
 
 # Subscription / payment handlers
-from handlers import subscription_router, topic_sub_router
+from handlers import subscription_router, topic_sub_router, autopost_router
 from middlewares import SubscriptionMiddleware
 
 # Topic subscription service
 from services.subscription_topic_service import get_all_active_subscriptions, mark_sent
+
+# Autopost service
+from services.autopost_service import (
+    get_due_subscriptions,
+    deactivate_expired_subscriptions,
+    update_last_post,
+    get_active_subscriptions as get_active_autopost_subscriptions,
+)
 
 # Import statistics and image fetcher from main
 try:
@@ -150,6 +158,7 @@ bot = Bot(
 dp = Dispatcher(storage=MemoryStorage())
 
 # Register subscription / payment router
+dp.include_router(autopost_router)  # autopost first (handles successful_payment for autopost:)
 dp.include_router(subscription_router)
 dp.include_router(topic_sub_router)
 
@@ -169,7 +178,7 @@ class PostGeneration(StatesGroup):
 # Main keyboard for all users
 kb = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="📬 Подписки")],
+        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="📬 Автопостинг")],
         [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ Статус")],
     ],
     resize_keyboard=True,
@@ -177,7 +186,7 @@ kb = ReplyKeyboardMarkup(
 # Admin keyboard with statistics button
 kb_admin = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="📬 Подписки")],
+        [KeyboardButton(text="📝 Пост"), KeyboardButton(text="📬 Автопостинг")],
         [KeyboardButton(text="❓ Помощь"), KeyboardButton(text="ℹ️ Статус")],
         [KeyboardButton(text="📊 Статистика")],
     ],
@@ -423,7 +432,8 @@ async def menu_handler(message: types.Message, state: FSMContext):
         await message.answer(
             "🎯 <b>Как использовать:</b>\n"
             "• 📝 <b>Пост</b> — сгенерировать текст\n"
-            "• 📬 <b>Подписки</b> — ежедневные посты по теме\n"
+            "• 📬 <b>Автопостинг</b> — автоматическая публикация в ваш канал\n"
+            "• 📬 <b>Подписки</b> — ежедневные посты по теме (/subscribe)\n"
             "• Пиши тему, получи готовый контент!\n"
             "• 🌐 Авто RU/EN перевод\n\n"
             "💎 <b>Pro подписка:</b>\n"
@@ -431,7 +441,11 @@ async def menu_handler(message: types.Message, state: FSMContext):
             "• Продвинутая модель AI\n"
             "• Без водяного знака\n"
             "• /subscribe — оформить подписку\n\n"
-            "<b>Команды:</b> /start | /subscribe | /status | /my_subscriptions\n"
+            "<b>Команды:</b>\n"
+            "/start — Начало\n"
+            "/subscribe — Подписка на ежедневные посты\n"
+            "/my_subscriptions — Управление подписками\n"
+            "/my_autoposts — Управление автопостингом\n\n"
             "<code>Техподдержка: @твой_nick</code>"
         )
     elif message.text == "ℹ️ Статус":
@@ -453,12 +467,24 @@ async def menu_handler(message: types.Message, state: FSMContext):
             _limit = _free_lim
             _model = "sonar-small"
 
+        # Подсчёт активных автопостов пользователя
+        autopost_count = 0
+        try:
+            async with get_session() as session:
+                user_autoposts = await get_active_autopost_subscriptions(
+                    session, message.from_user.id
+                )
+                autopost_count = len(user_autoposts)
+        except Exception:
+            pass
+
         await message.answer(
             f"📊 <b>Ваш статус:</b>\n"
             f"├ Тариф: <b>{_tariff}</b>\n"
             f"├ Постов сегодня: <b>{_today}/{_limit}</b>\n"
             f"├ Модель: <b>{_model}</b>\n"
-            f"└ Всего создано: <b>{_total}</b> постов"
+            f"├ Всего создано: <b>{_total}</b> постов\n"
+            f"└ 📬 Ваши автопосты: {autopost_count}"
         )
     elif message.text == "📊 Статистика":
         await state.clear()
@@ -1028,6 +1054,56 @@ async def daily_topic_posts():
             logger.error(f"❌ Daily post failed for {sub.telegram_id}: {e}")
 
 
+async def autopost_job():
+    """Выполняется каждую минуту. Проверяет подписки и генерирует посты."""
+    try:
+        async with get_session() as session:
+            await deactivate_expired_subscriptions(session)
+
+        async with get_session() as session:
+            due_subs = await get_due_subscriptions(session)
+
+        if not due_subs:
+            return
+
+        logger.info(f"📬 autopost_job: {len(due_subs)} subscriptions due")
+
+        for sub in due_subs:
+            try:
+                content = await generate_content(sub.topic)
+                safe_content = safe_html(content)
+
+                await bot.send_message(
+                    chat_id=sub.channel_id,
+                    text=safe_content,
+                    parse_mode="HTML",
+                )
+
+                async with get_session() as session:
+                    await update_last_post(session, sub.id)
+
+                logger.info(
+                    f"✅ Autopost sent: sub={sub.id}, channel={sub.channel_id}, "
+                    f"topic='{sub.topic}', posts={sub.posts_generated + 1}"
+                )
+            except Exception as e:
+                logger.error(f"❌ Autopost failed: sub={sub.id}, error={e}")
+                # Уведомить пользователя при повторных ошибках
+                if sub.posts_generated > 0 and sub.posts_generated % 3 == 0:
+                    try:
+                        await bot.send_message(
+                            sub.telegram_id,
+                            f"⚠️ Ошибка автопостинга в канал "
+                            f"{sub.channel_title or sub.channel_id}.\n"
+                            f"Тема: «{sub.topic}»\n"
+                            f"Проверьте, что бот является администратором канала.",
+                        )
+                    except Exception:
+                        pass
+    except Exception as e:
+        logger.error(f"❌ autopost_job error: {e}", exc_info=True)
+
+
 async def on_startup():
     """Bot startup function."""
 
@@ -1046,11 +1122,19 @@ async def on_startup():
     scheduler = AsyncIOScheduler()
     scheduler.add_job(auto_post, "interval", hours=config.autopost_interval_hours)
     scheduler.add_job(daily_topic_posts, "interval", hours=1)
+    scheduler.add_job(
+        autopost_job,
+        "interval",
+        minutes=1,
+        id="autopost_check",
+        replace_existing=True,
+    )
     scheduler.start()
     logger.info(
         f"🚀 Автопостинг запущен: каждые {config.autopost_interval_hours}ч → {config.channel_id}"
     )
     logger.info("📬 Daily topic subscriptions scheduler started (every 1h)")
+    logger.info("📬 Autopost subscriptions scheduler started (every 1m)")
 
     logger.info("=" * 60)
     logger.info("🏥 Startup health summary:")
@@ -1063,6 +1147,7 @@ async def on_startup():
     )
     logger.info(f"  Images       : {'✅ enabled' if IMAGES_ENABLED else '⚠️  disabled (no API keys)'}")
     logger.info(f"  Subscriptions: ✅ enabled (daily_topic_posts)")
+    logger.info(f"  Autopost subs: ✅ enabled (every 1m check)")
     logger.info("=" * 60)
 
     shutdown_manager.register_callback(on_shutdown)
