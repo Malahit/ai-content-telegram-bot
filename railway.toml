@@ -1,4 +1,4 @@
 [deploy]
-startCommand = "alembic upgrade head && python bot.py"
+startCommand = "alembic stamp 8af3eec3a7e6 --purge 2>/dev/null; alembic upgrade heads && python bot.py"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
