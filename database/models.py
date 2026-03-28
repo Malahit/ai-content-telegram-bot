@@ -71,6 +71,12 @@ class User(Base):
     status: Mapped[UserStatus] = mapped_column(
         SQLEnum(UserStatus, native_enum=False), default=UserStatus.ACTIVE, nullable=False
     )
+    # Referral system
+    referral_code: Mapped[Optional[str]] = mapped_column(String(20), unique=True, nullable=True, index=True)
+    referred_by: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    referral_bonus_posts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    referrals_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False

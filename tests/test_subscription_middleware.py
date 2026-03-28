@@ -53,24 +53,28 @@ class TestSubscriptionMiddlewarePassThrough(unittest.TestCase):
     def _run(self, coro):
         return asyncio.run(coro)
 
-    def test_plain_text_is_passed_through(self):
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
+    def test_plain_text_is_passed_through(self, _mock_get_user):
         """Non-command messages are always forwarded."""
         handler = AsyncMock(return_value="ok")
         msg = _make_message("hello world")
+        data = {}
 
-        result = self._run(self.middleware(handler, msg, {}))
+        result = self._run(self.middleware(handler, msg, data))
 
-        handler.assert_awaited_once_with(msg, {})
+        handler.assert_awaited_once_with(msg, data)
         self.assertEqual(result, "ok")
 
-    def test_command_message_is_passed_through_when_list_empty(self):
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
+    def test_command_message_is_passed_through_when_list_empty(self, _mock_get_user):
         """Commands are forwarded when premium_commands is empty (no gating)."""
         handler = AsyncMock(return_value="ok")
         msg = _make_message("/generate")
+        data = {}
 
-        result = self._run(self.middleware(handler, msg, {}))
+        result = self._run(self.middleware(handler, msg, data))
 
-        handler.assert_awaited_once_with(msg, {})
+        handler.assert_awaited_once_with(msg, data)
         self.assertEqual(result, "ok")
         # No premium check triggered → answer() should never be called
         msg.answer.assert_not_called()
@@ -105,14 +109,16 @@ class TestSubscriptionMiddlewareGating(unittest.TestCase):
     def _run(self, coro):
         return asyncio.run(coro)
 
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
     @patch("middlewares.subscription_middleware.is_premium", new_callable=AsyncMock)
-    def test_non_premium_user_is_blocked(self, mock_is_premium):
+    def test_non_premium_user_is_blocked(self, mock_is_premium, _mock_get_user):
         """Non-premium user is denied access to a gated command."""
         mock_is_premium.return_value = False
         handler = AsyncMock()
         msg = _make_message(f"/{self.PREMIUM_CMD}", user_id=42)
+        data = {}
 
-        result = self._run(self.middleware(handler, msg, {}))
+        result = self._run(self.middleware(handler, msg, data))
 
         mock_is_premium.assert_awaited_once_with(42)
         # Handler must NOT be called
@@ -121,41 +127,47 @@ class TestSubscriptionMiddlewareGating(unittest.TestCase):
         msg.answer.assert_awaited_once()
         self.assertIsNone(result)
 
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
     @patch("middlewares.subscription_middleware.is_premium", new_callable=AsyncMock)
-    def test_premium_user_is_allowed(self, mock_is_premium):
+    def test_premium_user_is_allowed(self, mock_is_premium, _mock_get_user):
         """Premium user can use a gated command."""
         mock_is_premium.return_value = True
         handler = AsyncMock(return_value="done")
         msg = _make_message(f"/{self.PREMIUM_CMD}", user_id=99)
+        data = {}
 
-        result = self._run(self.middleware(handler, msg, {}))
+        result = self._run(self.middleware(handler, msg, data))
 
         mock_is_premium.assert_awaited_once_with(99)
-        handler.assert_awaited_once_with(msg, {})
+        handler.assert_awaited_once_with(msg, data)
         self.assertEqual(result, "done")
 
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
     @patch("middlewares.subscription_middleware.is_premium", new_callable=AsyncMock)
-    def test_non_premium_user_can_use_non_gated_command(self, mock_is_premium):
+    def test_non_premium_user_can_use_non_gated_command(self, mock_is_premium, _mock_get_user):
         """Non-premium user is not blocked for commands outside the gate list."""
         mock_is_premium.return_value = False
         handler = AsyncMock(return_value="ok")
         msg = _make_message("/start", user_id=7)
+        data = {}
 
-        result = self._run(self.middleware(handler, msg, {}))
+        result = self._run(self.middleware(handler, msg, data))
 
         # /start is not in premium_commands → no premium check
         mock_is_premium.assert_not_awaited()
-        handler.assert_awaited_once_with(msg, {})
+        handler.assert_awaited_once_with(msg, data)
         self.assertEqual(result, "ok")
 
-    def test_plain_text_not_checked(self):
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
+    def test_plain_text_not_checked(self, _mock_get_user):
         """Plain (non-command) text is never checked against premium list."""
         handler = AsyncMock(return_value="fine")
         msg = _make_message("just some text", user_id=5)
+        data = {}
 
-        result = self._run(self.middleware(handler, msg, {}))
+        result = self._run(self.middleware(handler, msg, data))
 
-        handler.assert_awaited_once_with(msg, {})
+        handler.assert_awaited_once_with(msg, data)
         msg.answer.assert_not_called()
 
 
