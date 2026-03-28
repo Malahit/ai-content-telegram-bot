@@ -1,11 +1,8 @@
 """
-Unit tests for SubscriptionMiddleware.
+Unit tests for SubscriptionMiddleware — daily limit enforcement.
 
-These tests verify:
-1. The middleware passes all messages through when premium_commands=[] (the
-   default startup wiring used in bot.py after the entrypoint unification in PR #2).
-2. The middleware blocks non-premium users from premium-gated commands and
-   lets premium users and non-command messages through.
+The middleware enforces FREE_DAILY_LIMIT on content-generation handlers
+(📝 Пост, /generate) while letting system commands pass freely.
 """
 
 import asyncio
@@ -14,7 +11,6 @@ import sys
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-# Make sure the project root is on the path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aiogram.types import Message
@@ -22,12 +18,6 @@ from middlewares.subscription_middleware import SubscriptionMiddleware
 
 
 def _make_message(text: str, user_id: int = 123) -> MagicMock:
-    """Return a minimal mock Message with the given text and user_id.
-
-    Setting ``__class__ = Message`` allows the middleware's
-    ``isinstance(event, Message)`` guard to pass while keeping the rest
-    of the object as a plain MagicMock.
-    """
     msg = MagicMock()
     msg.__class__ = Message
     msg.text = text
@@ -37,161 +27,222 @@ def _make_message(text: str, user_id: int = 123) -> MagicMock:
     return msg
 
 
-class TestSubscriptionMiddlewarePassThrough(unittest.TestCase):
-    """
-    Tests for the empty-list (no-op) configuration that is registered in bot.py:
-
-        dp.message.middleware(SubscriptionMiddleware(premium_commands=[]))
-
-    With premium_commands=[], no command is gated so every message must be
-    forwarded to the next handler regardless of premium status.
-    """
+class TestMiddlewarePassThrough(unittest.TestCase):
+    """System commands and non-generation messages should always pass."""
 
     def setUp(self):
-        self.middleware = SubscriptionMiddleware(premium_commands=[])
+        self.middleware = SubscriptionMiddleware()
 
     def _run(self, coro):
         return asyncio.run(coro)
 
-    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
-    def test_plain_text_is_passed_through(self, _mock_get_user):
-        """Non-command messages are always forwarded."""
+    def test_start_command_passes(self):
+        handler = AsyncMock(return_value="ok")
+        msg = _make_message("/start")
+        result = self._run(self.middleware(handler, msg, {}))
+        handler.assert_awaited_once_with(msg, {})
+        self.assertEqual(result, "ok")
+
+    def test_help_command_passes(self):
+        handler = AsyncMock(return_value="ok")
+        msg = _make_message("/help")
+        result = self._run(self.middleware(handler, msg, {}))
+        handler.assert_awaited_once()
+
+    def test_subscribe_command_passes(self):
+        handler = AsyncMock(return_value="ok")
+        msg = _make_message("/subscribe")
+        result = self._run(self.middleware(handler, msg, {}))
+        handler.assert_awaited_once()
+
+    def test_status_command_passes(self):
+        handler = AsyncMock(return_value="ok")
+        msg = _make_message("/status")
+        result = self._run(self.middleware(handler, msg, {}))
+        handler.assert_awaited_once()
+
+    def test_admin_command_passes(self):
+        handler = AsyncMock(return_value="ok")
+        msg = _make_message("/admin")
+        result = self._run(self.middleware(handler, msg, {}))
+        handler.assert_awaited_once()
+
+    def test_plain_text_passes(self):
         handler = AsyncMock(return_value="ok")
         msg = _make_message("hello world")
-        data = {}
+        result = self._run(self.middleware(handler, msg, {}))
+        handler.assert_awaited_once()
 
-        result = self._run(self.middleware(handler, msg, data))
-
-        handler.assert_awaited_once_with(msg, data)
-        self.assertEqual(result, "ok")
-
-    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
-    def test_command_message_is_passed_through_when_list_empty(self, _mock_get_user):
-        """Commands are forwarded when premium_commands is empty (no gating)."""
+    def test_subscriptions_button_passes(self):
         handler = AsyncMock(return_value="ok")
-        msg = _make_message("/generate")
-        data = {}
+        msg = _make_message("📬 Подписки")
+        result = self._run(self.middleware(handler, msg, {}))
+        handler.assert_awaited_once()
 
-        result = self._run(self.middleware(handler, msg, data))
-
-        handler.assert_awaited_once_with(msg, data)
-        self.assertEqual(result, "ok")
-        # No premium check triggered → answer() should never be called
-        msg.answer.assert_not_called()
-
-    def test_non_message_event_is_passed_through(self):
-        """Non-Message events (e.g. callback queries) are always forwarded."""
+    def test_non_message_event_passes(self):
         handler = AsyncMock(return_value="cb_result")
-        # Simulate a non-Message object
-        event = MagicMock(spec=[])  # no 'text' attribute
-
+        event = MagicMock(spec=[])
         result = self._run(self.middleware(handler, event, {}))
-
-        handler.assert_awaited_once_with(event, {})
-        self.assertEqual(result, "cb_result")
+        handler.assert_awaited_once()
 
 
-class TestSubscriptionMiddlewareGating(unittest.TestCase):
-    """
-    Tests for premium-command gating when premium_commands is non-empty.
-
-    This validates that the middleware logic itself works correctly and that
-    operators can safely add commands to the gate in the future.
-    """
-
-    PREMIUM_CMD = "premium_feature"
+class TestMiddlewareLimitEnforcement(unittest.TestCase):
+    """Content generation triggers should be rate-limited for free users."""
 
     def setUp(self):
-        self.middleware = SubscriptionMiddleware(
-            premium_commands=[self.PREMIUM_CMD]
-        )
+        self.middleware = SubscriptionMiddleware()
 
     def _run(self, coro):
         return asyncio.run(coro)
 
-    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
-    @patch("middlewares.subscription_middleware.is_premium", new_callable=AsyncMock)
-    def test_non_premium_user_is_blocked(self, mock_is_premium, _mock_get_user):
-        """Non-premium user is denied access to a gated command."""
-        mock_is_premium.return_value = False
-        handler = AsyncMock()
-        msg = _make_message(f"/{self.PREMIUM_CMD}", user_id=42)
+    @patch("middlewares.subscription_middleware.get_today_post_count", new_callable=AsyncMock)
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock)
+    def test_free_user_under_limit_allowed(self, mock_get_user, mock_count):
+        mock_user = MagicMock()
+        mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 0
+        mock_get_user.return_value = mock_user
+        mock_count.return_value = 1
+
+        handler = AsyncMock(return_value="ok")
+        msg = _make_message("📝 Пост", user_id=42)
         data = {}
 
         result = self._run(self.middleware(handler, msg, data))
 
-        mock_is_premium.assert_awaited_once_with(42)
-        # Handler must NOT be called
+        handler.assert_awaited_once()
+        self.assertEqual(result, "ok")
+        self.assertFalse(data.get("is_premium"))
+
+    @patch("middlewares.subscription_middleware.get_today_post_count", new_callable=AsyncMock)
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock)
+    def test_free_user_at_limit_blocked(self, mock_get_user, mock_count):
+        mock_user = MagicMock()
+        mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 0
+        mock_get_user.return_value = mock_user
+        mock_count.return_value = 3  # At FREE_DAILY_LIMIT
+
+        handler = AsyncMock()
+        msg = _make_message("📝 Пост", user_id=42)
+
+        result = self._run(self.middleware(handler, msg, {}))
+
         handler.assert_not_awaited()
-        # User must receive an informational reply
+        msg.answer.assert_awaited_once()
+        answer_text = msg.answer.call_args[0][0]
+        self.assertIn("Дневной лимит", answer_text)
+        self.assertIsNone(result)
+
+    @patch("middlewares.subscription_middleware.get_today_post_count", new_callable=AsyncMock)
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock)
+    def test_free_user_over_limit_blocked(self, mock_get_user, mock_count):
+        mock_user = MagicMock()
+        mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 0
+        mock_get_user.return_value = mock_user
+        mock_count.return_value = 5
+
+        handler = AsyncMock()
+        msg = _make_message("/generate", user_id=42)
+        data = {}
+
+        result = self._run(self.middleware(handler, msg, data))
+
+        handler.assert_not_awaited()
         msg.answer.assert_awaited_once()
         self.assertIsNone(result)
 
-    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
-    @patch("middlewares.subscription_middleware.is_premium", new_callable=AsyncMock)
-    def test_premium_user_is_allowed(self, mock_is_premium, _mock_get_user):
-        """Premium user can use a gated command."""
-        mock_is_premium.return_value = True
-        handler = AsyncMock(return_value="done")
-        msg = _make_message(f"/{self.PREMIUM_CMD}", user_id=99)
-        data = {}
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock)
+    def test_premium_user_always_allowed(self, mock_get_user):
+        from datetime import datetime, timedelta
+        mock_user = MagicMock()
+        mock_user.is_premium = True
+        mock_user.subscription_end = datetime.utcnow() + timedelta(days=10)
+        mock_get_user.return_value = mock_user
 
-        result = self._run(self.middleware(handler, msg, data))
-
-        mock_is_premium.assert_awaited_once_with(99)
-        handler.assert_awaited_once_with(msg, data)
-        self.assertEqual(result, "done")
-
-    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
-    @patch("middlewares.subscription_middleware.is_premium", new_callable=AsyncMock)
-    def test_non_premium_user_can_use_non_gated_command(self, mock_is_premium, _mock_get_user):
-        """Non-premium user is not blocked for commands outside the gate list."""
-        mock_is_premium.return_value = False
         handler = AsyncMock(return_value="ok")
-        msg = _make_message("/start", user_id=7)
+        msg = _make_message("📝 Пост", user_id=99)
         data = {}
 
         result = self._run(self.middleware(handler, msg, data))
 
-        # /start is not in premium_commands → no premium check
-        mock_is_premium.assert_not_awaited()
-        handler.assert_awaited_once_with(msg, data)
+        handler.assert_awaited_once()
+        self.assertTrue(data.get("is_premium"))
+
+    @patch("middlewares.subscription_middleware.get_today_post_count", new_callable=AsyncMock)
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock)
+    def test_generate_command_with_bot_username(self, mock_get_user, mock_count):
+        """Test /generate@botname is also rate-limited."""
+        mock_user = MagicMock()
+        mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 0
+        mock_get_user.return_value = mock_user
+        mock_count.return_value = 3
+
+        handler = AsyncMock()
+        msg = _make_message("/generate@ai_content_helper_bot", user_id=42)
+        data = {}
+
+        result = self._run(self.middleware(handler, msg, data))
+
+        handler.assert_not_awaited()
+        self.assertIsNone(result)
+
+    @patch("middlewares.subscription_middleware.get_today_post_count", new_callable=AsyncMock)
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock)
+    def test_referral_bonus_extends_limit(self, mock_get_user, mock_count):
+        """User with referral bonus gets higher effective daily limit."""
+        mock_user = MagicMock()
+        mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 3  # 3 bonus posts from referrals
+        mock_get_user.return_value = mock_user
+        mock_count.return_value = 4  # Over base limit (3) but under effective (6)
+
+        handler = AsyncMock(return_value="ok")
+        msg = _make_message("📝 Пост", user_id=42)
+        data = {}
+
+        result = self._run(self.middleware(handler, msg, data))
+
+        handler.assert_awaited_once()
         self.assertEqual(result, "ok")
+        self.assertEqual(data["effective_daily_limit"], 6)  # 3 base + 3 bonus
 
-    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock, return_value=None)
-    def test_plain_text_not_checked(self, _mock_get_user):
-        """Plain (non-command) text is never checked against premium list."""
-        handler = AsyncMock(return_value="fine")
-        msg = _make_message("just some text", user_id=5)
-        data = {}
+    @patch("middlewares.subscription_middleware.get_today_post_count", new_callable=AsyncMock)
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock)
+    def test_referral_bonus_still_blocked_at_effective_limit(self, mock_get_user, mock_count):
+        """User with referral bonus is blocked when reaching effective limit."""
+        mock_user = MagicMock()
+        mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 2  # effective limit = 5
+        mock_get_user.return_value = mock_user
+        mock_count.return_value = 5  # At effective limit
 
-        result = self._run(self.middleware(handler, msg, data))
+        handler = AsyncMock()
+        msg = _make_message("📝 Пост", user_id=42)
 
-        handler.assert_awaited_once_with(msg, data)
-        msg.answer.assert_not_called()
+        result = self._run(self.middleware(handler, msg, {}))
+
+        handler.assert_not_awaited()
+        msg.answer.assert_awaited_once()
+        self.assertIsNone(result)
 
 
-class TestBotPyStartupWiring(unittest.TestCase):
-    """
-    Smoke-test that bot.py imports SubscriptionMiddleware and registers it on
-    the dispatcher.  This catches regressions where the import or middleware
-    call is accidentally removed again.
-    """
+class TestMiddlewareBackwardCompat(unittest.TestCase):
+    """Backward compatibility: SubscriptionMiddleware still accepts premium_commands kwarg."""
 
-    def test_subscription_middleware_importable(self):
-        """SubscriptionMiddleware can be imported from the middlewares package."""
-        from middlewares import SubscriptionMiddleware as SM  # noqa: F401
-        self.assertTrue(callable(SM))
-
-    def test_subscription_middleware_init_with_empty_list(self):
-        """SubscriptionMiddleware(premium_commands=[]) initialises without error."""
+    def test_init_with_empty_list(self):
         mw = SubscriptionMiddleware(premium_commands=[])
-        self.assertEqual(mw.premium_commands, [])
+        self.assertIsNotNone(mw)
 
-    def test_subscription_middleware_init_with_commands(self):
-        """SubscriptionMiddleware initialises correctly with a command list."""
-        mw = SubscriptionMiddleware(premium_commands=["cmd1", "cmd2"])
-        self.assertEqual(mw.premium_commands, ["cmd1", "cmd2"])
+    def test_init_with_commands(self):
+        mw = SubscriptionMiddleware(premium_commands=["cmd1"])
+        self.assertIsNotNone(mw)
+
+    def test_importable_from_package(self):
+        from middlewares import SubscriptionMiddleware as SM
+        self.assertTrue(callable(SM))
 
 
 if __name__ == "__main__":

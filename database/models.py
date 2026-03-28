@@ -22,6 +22,7 @@ from sqlalchemy import (
     Enum as SQLEnum,
     ForeignKey,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -336,4 +337,46 @@ class TopicSubscription(Base):
         return (
             f"<TopicSubscription(id={self.id}, telegram_id={self.telegram_id}, "
             f"topic='{self.topic}', hour={self.send_hour_utc})>"
+        )
+
+
+# -----------------
+# Autopost Subscriptions
+# -----------------
+
+
+class AutopostSubscription(Base):
+    """Подписка на автоматическую публикацию постов в TG-канал по расписанию."""
+    __tablename__ = "autopost_subscriptions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    channel_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    channel_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    topic: Mapped[str] = mapped_column(String(500), nullable=False)
+    frequency: Mapped[str] = mapped_column(String(50), nullable=False)
+    send_hour_utc: Mapped[int] = mapped_column(Integer, nullable=False)
+    send_hour_local: Mapped[int] = mapped_column(Integer, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(50), default="Europe/Moscow", nullable=False)
+    plan_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    stars_paid: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    telegram_charge_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    starts_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_post_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    posts_generated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now(), nullable=True
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<AutopostSubscription(id={self.id}, telegram_id={self.telegram_id}, "
+            f"channel={self.channel_id}, topic='{self.topic}', freq={self.frequency})>"
         )
