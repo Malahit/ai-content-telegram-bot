@@ -3,6 +3,9 @@ Subscription middleware — enforces daily post limits for free users.
 
 Applied ONLY to content-generation handlers (📝 Пост, /generate).
 System commands (/start, /help, /status, /subscribe, /admin, etc.) pass freely.
+
+Also injects the user's effective daily post limit (accounting for referral bonuses)
+into the handler data.
 """
 
 import os
@@ -14,6 +17,9 @@ from aiogram.types import Message
 from services.user_service import get_user
 from services.usage_service import get_today_post_count
 from logger_config import logger
+
+# Base free daily post limit
+FREE_DAILY_LIMIT = 3
 
 
 # Texts/buttons that trigger content generation and should be rate-limited
@@ -30,7 +36,11 @@ PRO_DAILY_LIMIT = int(os.getenv("PRO_DAILY_LIMIT", "30"))
 
 
 class SubscriptionMiddleware(BaseMiddleware):
-    """Checks daily limit for free users on content-generation handlers."""
+    """Checks daily limit for free users on content-generation handlers.
+
+    Also injects ``effective_daily_limit`` into handler data, which accounts
+    for referral bonus posts on top of FREE_DAILY_LIMIT.
+    """
 
     def __init__(self, premium_commands: list | None = None):
         """Accept premium_commands for backward compat (ignored, kept as attr)."""
@@ -74,19 +84,25 @@ class SubscriptionMiddleware(BaseMiddleware):
         data["is_premium"] = is_premium
 
         if not is_premium:
+            # Compute effective daily limit with referral bonus
+            bonus = getattr(user, "referral_bonus_posts", 0) or 0
+            effective_limit = FREE_DAILY_LIMIT + bonus
+            data["effective_daily_limit"] = effective_limit
+
             today_count = await get_today_post_count(event.from_user.id)
-            if today_count >= FREE_DAILY_LIMIT:
+            if today_count >= effective_limit:
                 await event.answer(
-                    f"⚠️ Дневной лимит исчерпан ({today_count}/{FREE_DAILY_LIMIT})\n\n"
+                    f"⚠️ Дневной лимит исчерпан ({today_count}/{effective_limit})\n\n"
                     "💎 Безлимитный доступ: /subscribe\n"
                     "• 30 постов в день\n"
                     "• Продвинутая модель AI\n"
                     "• Без водяного знака\n"
-                    "• Выбор стиля и длины"
+                    "• Выбор стиля и длины\n\n"
+                    "🔗 Или пригласи друга: /referral"
                 )
                 logger.info(
                     f"User {event.from_user.id} hit free daily limit "
-                    f"({today_count}/{FREE_DAILY_LIMIT})"
+                    f"({today_count}/{effective_limit})"
                 )
                 return None  # Block handler
 

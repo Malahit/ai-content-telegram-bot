@@ -24,6 +24,7 @@ from typing import Optional
 from bs4 import BeautifulSoup
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import CommandStart, Command
+from aiogram.filters.command import CommandObject
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton, InputMediaPhoto,
@@ -59,11 +60,20 @@ from services.usage_service import record_usage_event, record_blocked_usage_even
 from utils import InstanceLock, is_another_instance_running, shutdown_manager, PollingManager
 
 # Subscription / payment handlers
-from handlers import subscription_router, topic_sub_router, autopost_router
+from handlers import subscription_router, topic_sub_router, referral_router, autopost_router
 from middlewares import SubscriptionMiddleware
 
 # Topic subscription service
 from services.subscription_topic_service import get_all_active_subscriptions, mark_sent
+
+# Referral service
+from services.referral_service import (
+    ensure_referral_code,
+    get_user_by_referral_code,
+    credit_referral_bonus,
+    get_referral_stats,
+    REFERRAL_BONUS_POSTS,
+)
 
 # Autopost service
 from services.autopost_service import (
@@ -161,6 +171,7 @@ dp = Dispatcher(storage=MemoryStorage())
 dp.include_router(autopost_router)  # autopost first (handles successful_payment for autopost:)
 dp.include_router(subscription_router)
 dp.include_router(topic_sub_router)
+dp.include_router(referral_router)
 
 # Register subscription middleware (enforces daily limit on content generation).
 dp.message.middleware(SubscriptionMiddleware())
@@ -345,16 +356,16 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
         logger.error(f"Unexpected error during content generation: {e}", exc_info=True)
         return "❌ Произошла ошибка. Пожалуйста, попробуйте снова."
 @dp.message(CommandStart())
-async def start_handler(message: types.Message):
+async def start_handler(message: types.Message, command: CommandObject):
     """
     Handle /start command.
 
-    Registers new users, checks ban status, and sends welcome message.
-
-    Also ensures a default tenant/workspace exists for this user.
+    Registers new users, checks ban status, processes referral deep links,
+    and sends welcome message.
 
     Args:
         message: Incoming message
+        command: Parsed command with args (for deep link processing)
     """
 
     user_id = message.from_user.id
@@ -364,10 +375,37 @@ async def start_handler(message: types.Message):
 
     logger.info(f"User {user_id} started the bot")
 
+    # Check if this is a new user (for referral processing)
+    existing_user = await user_service.get_user(user_id)
+    is_new_user = existing_user is None
+
     # Register or get user
-    await user_service.register_or_get_user(
+    user = await user_service.register_or_get_user(
         telegram_id=user_id, username=username, first_name=first_name, last_name=last_name
     )
+
+    # Process referral deep link for new users
+    referral_welcome = ""
+    if is_new_user and command.args and command.args.startswith("ref_"):
+        referral_code = command.args[4:]
+        referrer = await get_user_by_referral_code(referral_code)
+        if referrer and referrer.telegram_id != user_id:
+            success = await credit_referral_bonus(referrer.telegram_id, user_id)
+            if success:
+                logger.info(
+                    f"Referral processed: {user_id} referred by {referrer.telegram_id}"
+                )
+                referral_welcome = "\n\n🎁 Вы присоединились по реферальной ссылке!"
+                # Notify referrer
+                try:
+                    await message.bot.send_message(
+                        referrer.telegram_id,
+                        f"🎉 Ваш друг присоединился по реферальной ссылке!\n"
+                        f"Бонус: +{REFERRAL_BONUS_POSTS} бесплатных поста "
+                        f"(всего: {referrer.referral_bonus_posts + REFERRAL_BONUS_POSTS})",
+                    )
+                except Exception:
+                    pass
 
     # Ensure tenant exists (best-effort)
     try:
@@ -398,7 +436,8 @@ async def start_handler(message: types.Message):
         f"💬 <i>Тема поста → готовый текст 200-300 слов!</i>\n\n"
         f"📡 Автопостинг: <code>{config.channel_id}</code> (каждые {config.autopost_interval_hours}ч)\n"
         f"⚙️ max_tokens={config.max_tokens} | {config.api_model}\n\n"
-        f"<b>Примеры:</b> SMM Москва | фитнес | завтрак",
+        f"🔗 Пригласи друга и получи +{REFERRAL_BONUS_POSTS} поста/день → /referral\n\n"
+        f"<b>Примеры:</b> SMM Москва | фитнес | завтрак{referral_welcome}",
         reply_markup=get_keyboard(message.from_user.id),
     )
 
@@ -441,11 +480,16 @@ async def menu_handler(message: types.Message, state: FSMContext):
             "• Продвинутая модель AI\n"
             "• Без водяного знака\n"
             "• /subscribe — оформить подписку\n\n"
+            "🔗 <b>Реферальная программа:</b>\n"
+            "• /referral — ваша пригласительная ссылка\n"
+            f"• +{REFERRAL_BONUS_POSTS} бесплатных поста/день за каждого друга\n"
+            "• Приглашайте друзей и генерируйте больше контента!\n\n"
             "<b>Команды:</b>\n"
             "/start — Начало\n"
             "/subscribe — Подписка на ежедневные посты\n"
             "/my_subscriptions — Управление подписками\n"
-            "/my_autoposts — Управление автопостингом\n\n"
+            "/my_autoposts — Управление автопостингом\n"
+            "/referral — Реферальная программа\n\n"
             "<code>Техподдержка: @твой_nick</code>"
         )
     elif message.text == "ℹ️ Статус":
@@ -478,13 +522,19 @@ async def menu_handler(message: types.Message, state: FSMContext):
         except Exception:
             pass
 
+        # Get referral stats for user
+        ref_stats = await get_referral_stats(message.from_user.id)
+        ref_bonus = ref_stats["bonus_posts"] if ref_stats else 0
+        ref_count = ref_stats["referrals_count"] if ref_stats else 0
+
         await message.answer(
             f"📊 <b>Ваш статус:</b>\n"
             f"├ Тариф: <b>{_tariff}</b>\n"
             f"├ Постов сегодня: <b>{_today}/{_limit}</b>\n"
             f"├ Модель: <b>{_model}</b>\n"
             f"├ Всего создано: <b>{_total}</b> постов\n"
-            f"└ 📬 Ваши автопосты: {autopost_count}"
+            f"├ 📬 Ваши автопосты: {autopost_count}\n"
+            f"└ 🔗 Рефералы: {ref_count} друзей (+{ref_bonus} постов/день)"
         )
     elif message.text == "📊 Статистика":
         await state.clear()

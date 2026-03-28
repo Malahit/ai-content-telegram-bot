@@ -100,6 +100,7 @@ class TestMiddlewareLimitEnforcement(unittest.TestCase):
     def test_free_user_under_limit_allowed(self, mock_get_user, mock_count):
         mock_user = MagicMock()
         mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 0
         mock_get_user.return_value = mock_user
         mock_count.return_value = 1
 
@@ -118,6 +119,7 @@ class TestMiddlewareLimitEnforcement(unittest.TestCase):
     def test_free_user_at_limit_blocked(self, mock_get_user, mock_count):
         mock_user = MagicMock()
         mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 0
         mock_get_user.return_value = mock_user
         mock_count.return_value = 3  # At FREE_DAILY_LIMIT
 
@@ -137,13 +139,15 @@ class TestMiddlewareLimitEnforcement(unittest.TestCase):
     def test_free_user_over_limit_blocked(self, mock_get_user, mock_count):
         mock_user = MagicMock()
         mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 0
         mock_get_user.return_value = mock_user
         mock_count.return_value = 5
 
         handler = AsyncMock()
         msg = _make_message("/generate", user_id=42)
+        data = {}
 
-        result = self._run(self.middleware(handler, msg, {}))
+        result = self._run(self.middleware(handler, msg, data))
 
         handler.assert_not_awaited()
         msg.answer.assert_awaited_once()
@@ -172,15 +176,56 @@ class TestMiddlewareLimitEnforcement(unittest.TestCase):
         """Test /generate@botname is also rate-limited."""
         mock_user = MagicMock()
         mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 0
         mock_get_user.return_value = mock_user
         mock_count.return_value = 3
 
         handler = AsyncMock()
         msg = _make_message("/generate@ai_content_helper_bot", user_id=42)
+        data = {}
+
+        result = self._run(self.middleware(handler, msg, data))
+
+        handler.assert_not_awaited()
+        self.assertIsNone(result)
+
+    @patch("middlewares.subscription_middleware.get_today_post_count", new_callable=AsyncMock)
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock)
+    def test_referral_bonus_extends_limit(self, mock_get_user, mock_count):
+        """User with referral bonus gets higher effective daily limit."""
+        mock_user = MagicMock()
+        mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 3  # 3 bonus posts from referrals
+        mock_get_user.return_value = mock_user
+        mock_count.return_value = 4  # Over base limit (3) but under effective (6)
+
+        handler = AsyncMock(return_value="ok")
+        msg = _make_message("📝 Пост", user_id=42)
+        data = {}
+
+        result = self._run(self.middleware(handler, msg, data))
+
+        handler.assert_awaited_once()
+        self.assertEqual(result, "ok")
+        self.assertEqual(data["effective_daily_limit"], 6)  # 3 base + 3 bonus
+
+    @patch("middlewares.subscription_middleware.get_today_post_count", new_callable=AsyncMock)
+    @patch("middlewares.subscription_middleware.get_user", new_callable=AsyncMock)
+    def test_referral_bonus_still_blocked_at_effective_limit(self, mock_get_user, mock_count):
+        """User with referral bonus is blocked when reaching effective limit."""
+        mock_user = MagicMock()
+        mock_user.is_premium = False
+        mock_user.referral_bonus_posts = 2  # effective limit = 5
+        mock_get_user.return_value = mock_user
+        mock_count.return_value = 5  # At effective limit
+
+        handler = AsyncMock()
+        msg = _make_message("📝 Пост", user_id=42)
 
         result = self._run(self.middleware(handler, msg, {}))
 
         handler.assert_not_awaited()
+        msg.answer.assert_awaited_once()
         self.assertIsNone(result)
 
 
