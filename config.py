@@ -11,7 +11,9 @@ class Config:
     channel_id: str = field(default_factory=lambda: os.getenv("CHANNEL_ID", "@test_channel"))
 
     # API settings
-    perplexity_api_key: str = field(default_factory=lambda: os.getenv("PERPLEXITY_API_KEY", ""))
+    perplexity_api_key: str = field(
+        default_factory=lambda: os.getenv("PERPLEXITY_API_KEY") or os.getenv("PPLX_API_KEY", "")
+    )
     api_model: str = field(default_factory=lambda: os.getenv("API_MODEL", "sonar"))
     max_tokens: int = field(default_factory=lambda: int(os.getenv("MAX_TOKENS", "1000")))
 
