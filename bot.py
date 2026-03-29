@@ -245,19 +245,19 @@ def sanitize_content(content: str) -> str:
     """
 
     # Remove citation numbers in parentheses: (1), (123), etc.
-    content = re.sub(r"\\(\d+\\)", "", content)
+    content = re.sub(r"\(\d+\)", "", content)
 
     # Remove citation numbers in brackets: [1], [12], etc.
-    content = re.sub(r"\\[\d+\\]", "", content)
+    content = re.sub(r"\[\d+\]", "", content)
 
     # Remove markdown links [text](url) - keep text, remove URL
-    content = re.sub(r"\\[([^\\]]+)\]\\([^)]+\\)", r"\1", content)
+    content = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", content)
 
     # Remove standalone URLs
     content = re.sub(r"https?://[^\s]+", "", content)
 
-    # Remove standalone brackets that might be left
-    content = re.sub(r"\\[\\]", "", content)
+    # Remove standalone empty brackets that might be left
+    content = re.sub(r"\[\]", "", content)
 
     # Clean up excessive whitespace
     content = re.sub(r"\s+", " ", content)
