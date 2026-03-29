@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete
 
 from database import get_session
-from models import User, TopicSubscription
+from database.models import User, TopicSubscription
 from services.user_service import UserService
 
 logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ async def toggle_topic_subscription(callback: CallbackQuery):
         f"✅ Вы {action} тему: {topic_name}\n\n"
         f"📋 Ваши тематические подписки ({count}/{len(AVAILABLE_TOPICS)}):\n\n"
         f"Нажмите на тему, чтобы подписаться или отписаться.\n"
-        f"Управлять подписками: /my\_subscriptions"
+        "Управлять подписками: /my\_subscriptions"
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
