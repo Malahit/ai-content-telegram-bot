@@ -2,12 +2,10 @@ import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select
 
 from database import get_session
 from database.models import User, TopicSubscription
-from services.user_service import UserService
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -56,8 +54,8 @@ async def cmd_my_subscriptions(message: Message):
     count = len(subscriptions)
     text = (
         f"📋 Ваши тематические подписки ({count}/{len(AVAILABLE_TOPICS)}):\n\n"
-        f"Нажмите на тему, чтобы подписаться или отписаться.\n"
-        f"Ежедневные посты приходят в 09:00 по вашему часовому поясу."
+        "Нажмите на тему, чтобы подписаться или отписаться.\n"
+        "Ежедневные посты приходят в 09:00 по вашему часовому поясу."
     )
     await message.answer(text, reply_markup=keyboard)
 
@@ -88,7 +86,6 @@ async def toggle_topic_subscription(callback: CallbackQuery):
             await session.commit()
             action = "подписались на"
 
-        # Refresh subscriptions
         result2 = await session.execute(
             select(TopicSubscription.topic).where(TopicSubscription.telegram_id == user_id)
         )
@@ -99,8 +96,8 @@ async def toggle_topic_subscription(callback: CallbackQuery):
     text = (
         f"✅ Вы {action} тему: {topic_name}\n\n"
         f"📋 Ваши тематические подписки ({count}/{len(AVAILABLE_TOPICS)}):\n\n"
-        f"Нажмите на тему, чтобы подписаться или отписаться.\n"
-        "Управлять подписками: /my\_subscriptions"
+        "Нажмите на тему, чтобы подписаться или отписаться.\n"
+        r"Управлять подписками: /my\_subscriptions"
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
@@ -119,8 +116,8 @@ async def show_subscriptions_from_menu(callback: CallbackQuery):
     count = len(subscriptions)
     text = (
         f"📋 Ваши тематические подписки ({count}/{len(AVAILABLE_TOPICS)}):\n\n"
-        f"Нажмите на тему, чтобы подписаться или отписаться.\n"
-        f"Ежедневные посты приходят каждый час согласно расписанию."
+        "Нажмите на тему, чтобы подписаться или отписаться.\n"
+        "Ежедневные посты приходят каждый час согласно расписанию."
     )
     await callback.message.edit_text(text, reply_markup=keyboard)
     await callback.answer()
