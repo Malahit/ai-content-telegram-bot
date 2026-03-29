@@ -26,10 +26,10 @@ class APIClient:
     
     def __init__(self):
         """Initialize API client with configuration."""
-        self.pplx_api_key = config.pplx_api_key
-        self.api_timeout = config.api_timeout
+        self.pplx_api_key = config.perplexity_api_key
+        self.api_timeout = getattr(config, 'api_timeout', 30)
         self.max_tokens = config.max_tokens
-        self.temperature = config.temperature
+        self.temperature = getattr(config, 'temperature', 0.7)
         self.api_model = config.api_model
         self.client = httpx.AsyncClient(timeout=float(self.api_timeout))
     
