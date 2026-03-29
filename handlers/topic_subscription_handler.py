@@ -1,115 +1,126 @@
-"""Хэндлеры ежедневных подписок на тему."""
-from aiogram import Router, F, types
+import logging
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
 
-from database.database import get_session
-from services.subscription_topic_service import (
-    add_subscription,
-    get_user_subscriptions,
-    cancel_subscription,
-)
+from database import get_session
+from models import User, TopicSubscription
+from services.user_service import UserService
 
+logger = logging.getLogger(__name__)
 router = Router()
 
-
-class SubscribeFSM(StatesGroup):
-    waiting_topic = State()
-    waiting_hour = State()
-
-
-@router.message(Command("subscribe"))
-@router.message(F.text == "📬 Подписки")
-async def cmd_subscribe(message: types.Message, state: FSMContext):
-    await state.set_state(SubscribeFSM.waiting_topic)
-    await message.answer(
-        "📬 <b>Подписка на ежедневные посты</b>\n\n"
-        "Напишите тему, по которой хотите получать пост каждый день.\n"
-        "<i>Например: огурцы, SMM, криптовалюта</i>"
-    )
+AVAILABLE_TOPICS = [
+    ("ai_tools", "🤖 AI инструменты"),
+    ("content_marketing", "📢 Контент-маркетинг"),
+    ("seo", "🔍 SEO"),
+    ("social_media", "📱 Социальные сети"),
+    ("copywriting", "✍️ Копирайтинг"),
+    ("email_marketing", "📧 Email-маркетинг"),
+    ("analytics", "📊 Аналитика"),
+    ("design", "🎨 Дизайн"),
+    ("video", "🎬 Видео"),
+    ("automation", "⚙️ Автоматизация"),
+]
 
 
-@router.message(SubscribeFSM.waiting_topic)
-async def got_topic(message: types.Message, state: FSMContext):
-    topic = message.text.strip()
-    if len(topic) > 200:
-        await message.answer("❌ Тема слишком длинная. Максимум 200 символов.")
-        return
-    await state.update_data(topic=topic)
-    await state.set_state(SubscribeFSM.waiting_hour)
-    await message.answer(
-        f"⏰ <b>В какое время присылать пост?</b>\n\n"
-        f"Введите час по UTC (0–23).\n"
-        f"<i>Например: 8 = 08:00 UTC (11:00 МСК)</i>"
-    )
-
-
-@router.message(SubscribeFSM.waiting_hour)
-async def got_hour(message: types.Message, state: FSMContext):
-    try:
-        hour = int(message.text.strip())
-        if not 0 <= hour <= 23:
-            raise ValueError
-    except ValueError:
-        await message.answer("❌ Введите число от 0 до 23.")
-        return
-
-    data = await state.get_data()
-    topic = data["topic"]
-
-    async with get_session() as session:
-        sub, error = await add_subscription(
-            session, message.from_user.id, topic, send_hour_utc=hour
-        )
-
-    if error:
-        await message.answer(f"❌ {error}")
-    else:
-        await message.answer(
-            f"✅ <b>Подписка оформлена!</b>\n\n"
-            f"📌 Тема: <b>{topic}</b>\n"
-            f"⏰ Время: <b>{hour:02d}:00 UTC</b>\n\n"
-            f"Каждый день в это время я буду присылать вам готовый пост по этой теме.\n\n"
-            f"📌 Управлять подписками: /my\_subscriptions"
-        )
-    await state.clear()
+def build_topics_keyboard(user_subscriptions: list[str]) -> InlineKeyboardMarkup:
+    buttons = []
+    for topic_key, topic_name in AVAILABLE_TOPICS:
+        is_subscribed = topic_key in user_subscriptions
+        status = "✅" if is_subscribed else "➕"
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{status} {topic_name}",
+                callback_data=f"topic_toggle:{topic_key}"
+            )
+        ])
+    buttons.append([
+        InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_menu")
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 @router.message(Command("my_subscriptions"))
-async def cmd_my_subscriptions(message: types.Message):
+async def cmd_my_subscriptions(message: Message):
+    user_id = message.from_user.id
     async with get_session() as session:
-        subs = await get_user_subscriptions(session, message.from_user.id)
-
-    if not subs:
-        await message.answer(
-            "📭 У вас нет активных подписок.\n"
-            "Используйте /subscribe или кнопку 📬 Подписки."
+        result = await session.execute(
+            select(TopicSubscription.topic).where(TopicSubscription.telegram_id == user_id)
         )
-        return
+        subscriptions = [row[0] for row in result.fetchall()]
 
-    text = "📋 <b>Ваши подписки:</b>\n\n"
-    buttons = []
-    for sub in subs:
-        text += f"• <b>{sub.topic}</b> — {sub.send_hour_utc:02d}:00 UTC\n"
-        buttons.append([
-            InlineKeyboardButton(
-                text=f"❌ Отменить \u00ab{sub.topic[:25]}\u00bb",
-                callback_data=f"unsub:{sub.id}",
-            )
-        ])
-
-    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
-    await message.answer(text, reply_markup=kb)
+    keyboard = build_topics_keyboard(subscriptions)
+    count = len(subscriptions)
+    text = (
+        f"📋 Ваши тематические подписки ({count}/{len(AVAILABLE_TOPICS)}):\n\n"
+        f"Нажмите на тему, чтобы подписаться или отписаться.\n"
+        f"Ежедневные посты приходят в 09:00 по вашему часовому поясу."
+    )
+    await message.answer(text, reply_markup=keyboard)
 
 
-@router.callback_query(F.data.startswith("unsub:"))
-async def cb_unsubscribe(call: types.CallbackQuery):
-    sub_id = int(call.data.split(":")[1])
+@router.callback_query(F.data.startswith("topic_toggle:"))
+async def toggle_topic_subscription(callback: CallbackQuery):
+    topic_key = callback.data.split(":", 1)[1]
+    user_id = callback.from_user.id
+
+    topic_name = dict(AVAILABLE_TOPICS).get(topic_key, topic_key)
+
     async with get_session() as session:
-        ok = await cancel_subscription(session, sub_id, call.from_user.id)
-    if ok:
-        await call.message.edit_text("✅ Подписка отменена.")
-    else:
-        await call.answer("❌ Подписка не найдена.", show_alert=True)
+        result = await session.execute(
+            select(TopicSubscription).where(
+                TopicSubscription.telegram_id == user_id,
+                TopicSubscription.topic == topic_key
+            )
+        )
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            await session.delete(existing)
+            await session.commit()
+            action = "отписались от"
+        else:
+            new_sub = TopicSubscription(telegram_id=user_id, topic=topic_key)
+            session.add(new_sub)
+            await session.commit()
+            action = "подписались на"
+
+        # Refresh subscriptions
+        result2 = await session.execute(
+            select(TopicSubscription.topic).where(TopicSubscription.telegram_id == user_id)
+        )
+        subscriptions = [row[0] for row in result2.fetchall()]
+
+    keyboard = build_topics_keyboard(subscriptions)
+    count = len(subscriptions)
+    text = (
+        f"✅ Вы {action} тему: {topic_name}\n\n"
+        f"📋 Ваши тематические подписки ({count}/{len(AVAILABLE_TOPICS)}):\n\n"
+        f"Нажмите на тему, чтобы подписаться или отписаться.\n"
+        f"Управлять подписками: /my\_subscriptions"
+    )
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "my_subscriptions")
+async def show_subscriptions_from_menu(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    async with get_session() as session:
+        result = await session.execute(
+            select(TopicSubscription.topic).where(TopicSubscription.telegram_id == user_id)
+        )
+        subscriptions = [row[0] for row in result.fetchall()]
+
+    keyboard = build_topics_keyboard(subscriptions)
+    count = len(subscriptions)
+    text = (
+        f"📋 Ваши тематические подписки ({count}/{len(AVAILABLE_TOPICS)}):\n\n"
+        f"Нажмите на тему, чтобы подписаться или отписаться.\n"
+        f"Ежедневные посты приходят каждый час согласно расписанию."
+    )
+    await callback.message.edit_text(text, reply_markup=keyboard)
+    await callback.answer()
