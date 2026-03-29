@@ -1,137 +1,87 @@
-"""
-Configuration loader (backward-compatible).
-
-- Keeps `Config()` behavior expected by the codebase/tests.
-- Exposes module-level `config` for `from config import config`.
-- Uses lazy loading for `config` to avoid import-time crashes when env is absent.
-- Call `Config.validate_startup()` (or `config.validate_startup()`) early in the
-  application entry point to surface missing optional-but-important settings with
-  clear log messages before the bot starts polling.
-"""
-from __future__ import annotations
-
-import logging
+# This file is auto-updated — DO NOT remove ADMIN_TELEGRAM_ID handling
 import os
-from typing import Optional, List, Any
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
-def _env(key: str, required: bool = False, default: Optional[str] = None) -> Optional[str]:
-    val = os.environ.get(key, default)
-    if isinstance(val, str):
-        val = val.strip()
-    if required and not val:
-        raise RuntimeError(f"Missing required env var: {key}")
-    return val
-
-
-def _parse_int_list(csv: Optional[str]) -> List[int]:
-    if not csv:
-        return []
-    out: List[int] = []
-    for part in csv.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        try:
-            out.append(int(part))
-        except ValueError:
-            continue
-    return out
-
-
+@dataclass
 class Config:
-    def __init__(self) -> None:
-        self.bot_token: str = _env("BOT_TOKEN", required=True)  # type: ignore[assignment]
-        self.pplx_api_key: str = _env("PPLX_API_KEY", required=True)  # type: ignore[assignment]
+    # Bot settings
+    bot_token: str = field(default_factory=lambda: os.getenv("BOT_TOKEN", ""))
+    channel_id: str = field(default_factory=lambda: os.getenv("CHANNEL_ID", "@test_channel"))
 
-        self.channel_id: Optional[str] = _env("CHANNEL_ID", required=False)
-        self.provider_token: Optional[str] = _env("PROVIDER_TOKEN", required=False)
-        self.database_url: Optional[str] = _env("DATABASE_URL", required=False)
+    # API settings
+    perplexity_api_key: str = field(default_factory=lambda: os.getenv("PERPLEXITY_API_KEY", ""))
+    api_model: str = field(default_factory=lambda: os.getenv("API_MODEL", "sonar"))
+    max_tokens: int = field(default_factory=lambda: int(os.getenv("MAX_TOKENS", "1000")))
 
-        # Perplexity/API params expected by api_client.py
-        self.api_model: str = _env("API_MODEL", required=False, default="sonar-small") or "sonar-small"
-        self.api_timeout: int = int(_env("API_TIMEOUT", required=False, default="30") or "30")
-        self.max_tokens: int = int(_env("MAX_TOKENS", required=False, default="800") or "800")
-        self.temperature: float = float(_env("TEMPERATURE", required=False, default="0.7") or "0.7")
+    # Database
+    database_url: str = field(default_factory=lambda: os.getenv("DATABASE_URL", ""))
 
-        # Autopost interval (support historical misspelling)
-        autopost = _env("AUTOPOST_INTERVAL_HOURS", required=False) or _env("AUTPOST_INTERVAL_HOURS", required=False) or "6"
-        try:
-            self.autopost_interval_hours: int = int(autopost)
-        except ValueError:
-            self.autopost_interval_hours = 6
+    # Autopost
+    autopost_interval_hours: int = field(
+        default_factory=lambda: int(os.getenv("AUTOPOST_INTERVAL_HOURS", "4"))
+    )
 
-        # Bot run mode: polling | webhook | disabled
-        # Set BOT_MODE=webhook or BOT_MODE=disabled to prevent long-polling from
-        # starting (e.g. when running multiple replicas or using Telegram webhooks).
-        # Defaults to "polling" for backward compatibility.
-        raw_mode = (_env("BOT_MODE", required=False) or "polling").lower()
-        if raw_mode not in {"polling", "webhook", "disabled"}:
-            raw_mode = "polling"
-        self.bot_mode: str = raw_mode
+    # Image APIs
+    pexels_api_key: str = field(default_factory=lambda: os.getenv("PEXELS_API_KEY", ""))
+    pixabay_api_key: str = field(default_factory=lambda: os.getenv("PIXABAY_API_KEY", ""))
 
-        # Admins
-        self.admin_user_ids: List[int] = _parse_int_list(_env("ADMIN_USER_IDS", required=False))
+    # RAG settings
+    rag_enabled: bool = field(default_factory=lambda: os.getenv("RAG_ENABLED", "false").lower() == "true")
+    rag_data_dir: str = field(default_factory=lambda: os.getenv("RAG_DATA_DIR", "./rag_data"))
 
-        # Images
-        self.pexels_api_key: Optional[str] = _env("PEXELS_API_KEY", required=False)
-        self.pixabay_api_key: Optional[str] = _env("PIXABAY_API_KEY", required=False)
+    # Translation
+    translation_enabled: bool = field(
+        default_factory=lambda: os.getenv("TRANSLATION_ENABLED", "false").lower() == "true"
+    )
 
-    @classmethod
-    def load(cls) -> "Config":
-        return cls()
+    # Admin settings
+    admin_user_ids: List[int] = field(default_factory=list)
 
-    def validate_startup(self) -> None:
-        """
-        Log clear warnings for optional-but-important settings that are absent.
+    # Admin Telegram ID for error notifications (separate from admin_user_ids)
+    admin_telegram_id: Optional[int] = field(
+        default_factory=lambda: (
+            int(os.getenv("ADMIN_TELEGRAM_ID")) if os.getenv("ADMIN_TELEGRAM_ID") else None
+        )
+    )
 
-        Call this once at application startup (before polling begins) so that
-        operators see actionable messages rather than cryptic runtime errors later.
-        Does not raise – the bot can still run in a degraded mode without these.
-        """
-        _log = logging.getLogger(__name__)
-        if not self.database_url:
-            _log.warning(
-                "DATABASE_URL is not set. The bot will attempt to use a default "
-                "SQLite database. Set DATABASE_URL (e.g. a PostgreSQL URL on Railway) "
-                "for persistent storage across restarts."
-            )
-        if not self.channel_id:
-            _log.warning(
-                "CHANNEL_ID is not set. Auto-posting to a channel will be disabled."
-            )
+    def __post_init__(self):
+        admin_ids_str = os.getenv("ADMIN_USER_IDS", "")
+        if admin_ids_str:
+            try:
+                self.admin_user_ids = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip()]
+            except ValueError:
+                self.admin_user_ids = []
 
-    def has_bot_token(self) -> bool:
-        return bool(self.bot_token and self.bot_token.strip())
-
-    def has_api_key(self) -> bool:
-        return bool(self.pplx_api_key and self.pplx_api_key.strip())
+        # Fallback: if ADMIN_TELEGRAM_ID not set but ADMIN_USER_IDS has entries, use first
+        if not self.admin_telegram_id and self.admin_user_ids:
+            self.admin_telegram_id = self.admin_user_ids[0]
 
     def get_safe_config_info(self) -> dict:
         return {
-            "bot_token_configured": bool(self.bot_token),
-            "api_key_configured": bool(self.pplx_api_key),
-            "channel_id": self.channel_id,
+            "has_bot_token": bool(self.bot_token),
+            "has_perplexity_key": bool(self.perplexity_api_key),
+            "has_database_url": bool(self.database_url),
             "api_model": self.api_model,
-            "admin_user_count": len(self.admin_user_ids),
-            "images_enabled": bool(self.pexels_api_key or self.pixabay_api_key),
-            "payments_enabled": bool(self.provider_token),
-            "bot_mode": self.bot_mode,
+            "max_tokens": self.max_tokens,
+            "channel_id": self.channel_id,
+            "rag_enabled": self.rag_enabled,
+            "translation_enabled": self.translation_enabled,
+            "admin_user_ids_count": len(self.admin_user_ids),
+            "admin_telegram_id": bool(self.admin_telegram_id),
         }
 
+    def validate_startup(self):
+        errors = []
+        if not self.bot_token:
+            errors.append("BOT_TOKEN is not set")
+        if not self.perplexity_api_key:
+            errors.append("PERPLEXITY_API_KEY is not set")
+        if not self.database_url:
+            errors.append("DATABASE_URL is not set")
+        if errors:
+            raise ValueError(f"Configuration errors: {'; '.join(errors)}")
 
-class _LazyConfig:
-    _instance: Optional[Config] = None
 
-    def _get(self) -> Config:
-        if self._instance is None:
-            self._instance = Config()
-        return self._instance
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._get(), name)
-
-
-config = _LazyConfig()
-
-__all__ = ["Config", "config"]
+config = Config()
