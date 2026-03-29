@@ -52,6 +52,7 @@ async def create_autopost_subscription(
     plan_type: str,
     stars_paid: int,
     telegram_charge_id: str = None,
+    user_bot_token: str = None,
 ) -> AutopostSubscription:
     """Создать новую подписку на автопостинг."""
     plan = AUTOPOST_PLANS[plan_type]
@@ -71,13 +72,15 @@ async def create_autopost_subscription(
         telegram_charge_id=telegram_charge_id,
         is_active=True,
         expires_at=expires_at,
+        user_bot_token=user_bot_token,
     )
     session.add(sub)
     await session.commit()
     await session.refresh(sub)
     logger.info(
         f"Autopost subscription created: user={telegram_id}, channel={channel_id}, "
-        f"topic='{topic}', freq={frequency}, plan={plan_type}"
+        f"topic='{topic}', freq={frequency}, plan={plan_type}, "
+        f"own_bot={'yes' if user_bot_token else 'no'}"
     )
     return sub
 
@@ -109,13 +112,7 @@ async def count_active_subscriptions_for_channel(
 
 
 async def get_due_subscriptions(session: AsyncSession) -> list[AutopostSubscription]:
-    """Получить подписки, для которых пора генерировать пост.
-
-    Логика:
-    - is_active = True
-    - expires_at > now
-    - Проверка по частоте и времени
-    """
+    """Получить подписки, для которых пора генерировать пост."""
     now = datetime.now(timezone.utc)
     current_hour = now.hour
 
@@ -137,7 +134,6 @@ async def get_due_subscriptions(session: AsyncSession) -> list[AutopostSubscript
 
 def _is_due(sub: AutopostSubscription, now: datetime, current_hour: int) -> bool:
     """Проверить, пора ли генерировать пост для данной подписки."""
-    # Если есть last_post_at, проверяем интервал
     if sub.frequency == "daily":
         if current_hour != sub.send_hour_utc:
             return False
@@ -151,7 +147,7 @@ def _is_due(sub: AutopostSubscription, now: datetime, current_hour: int) -> bool
             return False
         if sub.last_post_at:
             hours_since = (now - sub.last_post_at).total_seconds() / 3600
-            if hours_since < 10:  # минимум 10 часов между постами
+            if hours_since < 10:
                 return False
         return True
 
@@ -166,7 +162,7 @@ def _is_due(sub: AutopostSubscription, now: datetime, current_hour: int) -> bool
             return False
         if sub.last_post_at:
             hours_since = (now - sub.last_post_at).total_seconds() / 3600
-            if hours_since < 5:  # минимум 5 часов между постами
+            if hours_since < 5:
                 return False
         return True
 
@@ -175,7 +171,7 @@ def _is_due(sub: AutopostSubscription, now: datetime, current_hour: int) -> bool
             return False
         if sub.last_post_at:
             days_since = (now - sub.last_post_at).total_seconds() / 86400
-            if days_since < 6:  # минимум 6 дней между постами
+            if days_since < 6:
                 return False
         return True
 
@@ -183,7 +179,7 @@ def _is_due(sub: AutopostSubscription, now: datetime, current_hour: int) -> bool
 
 
 async def deactivate_expired_subscriptions(session: AsyncSession) -> int:
-    """Деактивировать просроченные подписки. Возвращает количество деактивированных."""
+    """Деактивировать просроченные подписки."""
     now = datetime.now(timezone.utc)
     result = await session.execute(
         update(AutopostSubscription)
