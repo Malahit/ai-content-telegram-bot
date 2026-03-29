@@ -61,7 +61,7 @@ from utils import InstanceLock, is_another_instance_running, shutdown_manager, P
 
 # Subscription / payment handlers
 from handlers import subscription_router, topic_sub_router, referral_router, autopost_router
-from middlewares import SubscriptionMiddleware
+from middlewares import SubscriptionMiddleware, ErrorNotificationMiddleware
 
 # Topic subscription service
 from services.subscription_topic_service import get_all_active_subscriptions, mark_sent
@@ -166,6 +166,19 @@ bot = Bot(
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )
 dp = Dispatcher(storage=MemoryStorage())
+
+# ── Error notification middleware (must be registered before routers) ──────────
+# Catches ALL unhandled exceptions and sends a detailed report to the admin.
+# Requires ADMIN_TELEGRAM_ID env var (or falls back to first id in ADMIN_USER_IDS).
+if config.admin_telegram_id:
+    dp.update.middleware(ErrorNotificationMiddleware(admin_id=config.admin_telegram_id, bot=bot))
+    logger.info(f"✅ ErrorNotificationMiddleware registered → admin {config.admin_telegram_id}")
+else:
+    logger.warning(
+        "⚠️ ErrorNotificationMiddleware NOT registered: "
+        "set ADMIN_TELEGRAM_ID (or ADMIN_USER_IDS) env var to enable Telegram error alerts"
+    )
+# ──────────────────────────────────────────────────────────────────────────────
 
 # Register subscription / payment router
 dp.include_router(autopost_router)  # autopost first (handles successful_payment for autopost:)
