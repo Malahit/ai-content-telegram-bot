@@ -33,35 +33,28 @@ class APIClient:
         self.api_model = config.api_model
         self.client = httpx.AsyncClient(timeout=float(self.api_timeout))
     
-    def generate_content(self, topic: str, rag_context: Optional[str] = None, max_tokens: Optional[int] = None) -> str:
+    async def generate_content(self, topic: str, rag_context: Optional[str] = None, max_tokens: Optional[int] = None) -> str:
         """
         Generate content for a topic using Perplexity API.
-        
-        This is a synchronous wrapper around the async implementation.
-        Uses asyncio.run_until_complete to execute the async method.
-        Should not be called from async code - use generate_content_async instead.
-        
+
+        Async coroutine — awaitable from any async context (aiogram handlers,
+        APScheduler async jobs, etc.).  The old synchronous wrapper that called
+        loop.run_until_complete() has been removed because it raised
+        ``RuntimeError: This event loop is already running`` whenever the method
+        was invoked from within a running event loop.
+
         Args:
             topic: Topic to generate content about
             rag_context: Optional RAG context to include
             max_tokens: Optional max tokens override
-            
+
         Returns:
             Generated content as string
-            
+
         Raises:
             PerplexityAPIError: If API request fails
         """
-        import asyncio
-        
-        # Use asyncio.run for synchronous wrapper
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        return loop.run_until_complete(self.generate_content_async(topic, rag_context, max_tokens))
+        return await self.generate_content_async(topic, rag_context, max_tokens)
     
     @retry(
         stop=stop_after_attempt(3),
