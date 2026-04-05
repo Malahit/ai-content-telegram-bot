@@ -341,8 +341,8 @@ async def generate_content(topic: str, max_tokens: Optional[int] = None) -> str:
     rag_context, rag_info = await rag_service.get_context(topic)
 
     try:
-        # Generate content using API
-        content = api_client.generate_content(topic, rag_context, max_tokens)
+        # Generate content using API — must be awaited because generate_content is now a coroutine
+        content = await api_client.generate_content(topic, rag_context, max_tokens)
 
         # Sanitize content to remove citation artifacts and URLs
         content = sanitize_content(content)
